@@ -1,0 +1,47 @@
+# ========================
+# Dependencies
+# ========================
+node_modules/
+
+# ========================
+# Environment Variables (SECRETS!)
+# ========================
+.env
+.env.local
+.env.production
+
+# ========================
+# Build Output
+# ========================
+frontend/dist/
+frontend/dist-ssr/
+
+# ========================
+# Logs
+# ========================
+logs/
+*.log
+npm-debug.log*
+
+# ========================
+# OS Files
+# ========================
+.DS_Store
+Thumbs.db
+
+# ========================
+# Editor Files
+# ========================
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ========================
+# Uploaded Files (user content)
+# ========================
+backend/uploads/*
+!backend/uploads/.gitkeep

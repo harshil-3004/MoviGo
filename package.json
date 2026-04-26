@@ -1,0 +1,15 @@
+{
+  "name": "moviegoo-root",
+  "version": "1.0.0",
+  "description": "Unified runner for MovieGo Frontend and Backend",
+  "scripts": {
+    "start": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && npm run dev",
+    "client": "cd frontend && npm run dev",
+    "install-all": "cd backend && npm install && cd ../frontend && npm install",
+    "seed": "cd backend && npm run seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
