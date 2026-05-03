@@ -1,6 +1,6 @@
 const nodemailer = require('nodemailer');
 
-// Create reusable transporter — simplified for troubleshooting
+// Create reusable transporter — with FULL DEBUGGING for Render
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 587,
@@ -13,20 +13,18 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'
   },
-  connectionTimeout: 20000, // 20 seconds
-  greetingTimeout: 20000,
-  socketTimeout: 20000
+  debug: true, // Show SMTP traffic
+  logger: true, // Log to console
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000
 });
 
 // Verify connection configuration immediately
-console.log('📬 Starting Mailer Verification...');
+console.log('📬 Starting Mailer Verification (with Debugging)...');
 transporter.verify((error, success) => {
   if (error) {
-    console.error('❌ Mailer Connection Error Details:', {
-      message: error.message,
-      code: error.code,
-      command: error.command
-    });
+    console.error('❌ Mailer Connection Error Details:', error);
   } else {
     console.log('✅ Mailer ready for production (Port 587)');
   }
