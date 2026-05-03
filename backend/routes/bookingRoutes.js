@@ -190,6 +190,23 @@ router.get('/:id', verifyToken, async (req, res) => {
 // GET /api/bookings -> Get bookings (Admin/Theater Admin)
 router.get('/', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
+    // ── AUTO-EXPIRE: Mark pending bookings older than 10 minutes as Failed ──
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    const expiredPending = await Booking.find({
+      status: 'Pending',
+      createdAt: { $lt: tenMinutesAgo }
+    });
+
+    for (const booking of expiredPending) {
+      booking.status = 'Failed';
+      await booking.save();
+      // Release locked seats
+      await Showtime.findByIdAndUpdate(booking.showtime, {
+        $pull: { lockedSeats: { seat: { $in: booking.seats } } }
+      });
+    }
+    // ── END AUTO-EXPIRE ──
+
     let query = {};
     
     // Filter by theater if the user is a theater_admin
@@ -274,8 +291,10 @@ router.delete('/:id', verifyToken, async (req, res) => {
         $pull: { lockedSeats: { seat: { $in: booking.seats } } }
       });
       
-      await Booking.findByIdAndDelete(req.params.id);
-      return res.json({ message: 'Booking released and cancelled' });
+      // Mark as Cancelled instead of deleting so admin can see history
+      booking.status = 'Cancelled';
+      await booking.save();
+      return res.json({ message: 'Booking cancelled successfully' });
     } else {
       return res.status(400).json({ message: 'Only pending bookings can be released' });
     }

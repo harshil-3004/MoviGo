@@ -54,7 +54,7 @@ const AdminLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-4 selection:bg-primary/30">
+    <div className="min-h-screen bg-base flex items-center justify-center p-4 selection:bg-primary/30">
       
       <div className="w-full max-w-md">
         
@@ -66,7 +66,7 @@ const AdminLogin = () => {
           <p className="text-white/40 text-sm mt-2 font-mono">Restricted Access Portal</p>
         </div>
 
-        <div className="bg-[#111116] border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
+        <div className="bg-base border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
           
           <form onSubmit={handleAdminLogin} className="space-y-6">
@@ -80,7 +80,7 @@ const AdminLogin = () => {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="admin@movigo.com"
                   required
-                  className="w-full bg-[#0a0a0f] border border-white/5 rounded-xl py-3 pl-12 pr-4 text-white font-mono focus:outline-none focus:border-primary/50 transition-colors"
+                  className="w-full bg-base border border-white/5 rounded-xl py-3 pl-12 pr-4 text-white font-mono focus:outline-none focus:border-primary/50 transition-colors"
                 />
               </div>
             </div>
@@ -95,7 +95,7 @@ const AdminLogin = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full bg-[#0a0a0f] border border-white/5 rounded-xl py-3 pl-12 pr-4 text-white font-mono tracking-[0.2em] focus:outline-none focus:border-primary/50 transition-colors"
+                  className="w-full bg-base border border-white/5 rounded-xl py-3 pl-12 pr-4 text-white font-mono tracking-[0.2em] focus:outline-none focus:border-primary/50 transition-colors"
                 />
               </div>
             </div>

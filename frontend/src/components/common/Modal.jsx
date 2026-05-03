@@ -30,7 +30,7 @@ const Modal = ({ isOpen, onClose, title, children, className = '' }) => {
       
       {/* Modal Dialog with glassmorphic style */}
       <div 
-        className={`relative w-full bg-[#0a0c10]/95 border border-white/10 rounded-[2.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden transform transition-all animate-in zoom-in-95 fade-in duration-300 ${className || 'max-w-lg'}`}
+        className={`relative w-full bg-base/95 border border-white/10 rounded-[2.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden transform transition-all animate-in zoom-in-95 fade-in duration-300 ${className || 'max-w-lg'}`}
         role="dialog"
       >
         {/* Decorative background glow */}

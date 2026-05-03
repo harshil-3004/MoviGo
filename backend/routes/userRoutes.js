@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const RedeemableItem = require('../models/RedeemableItem');
-const { verifyToken, adminOnly } = require('../middleware/authMiddleware');
+const { verifyToken, adminOnly, theaterAdminOnly } = require('../middleware/authMiddleware');
 
 // GET /api/users -> Admin gets all consumers and staff
 router.get('/', verifyToken, adminOnly, async (req, res) => {
@@ -215,8 +215,18 @@ router.post('/redeem-item/:id', verifyToken, async (req, res) => {
 });
 
 // Admin Routes for Loyalty Store
+// GET /api/users/admin/items -> Get ALL items (active + inactive) for admin panel
+router.get('/admin/items', verifyToken, theaterAdminOnly, async (req, res) => {
+  try {
+    const items = await RedeemableItem.find({}).sort({ isAvailable: -1, createdAt: -1 });
+    res.json(items);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching items.' });
+  }
+});
+
 // POST /api/users/admin/items -> Add new item
-router.post('/admin/items', verifyToken, adminOnly, async (req, res) => {
+router.post('/admin/items', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
     const newItem = new RedeemableItem(req.body);
     await newItem.save();
@@ -227,7 +237,7 @@ router.post('/admin/items', verifyToken, adminOnly, async (req, res) => {
 });
 
 // PUT /api/users/admin/items/:id -> Update item
-router.put('/admin/items/:id', verifyToken, adminOnly, async (req, res) => {
+router.put('/admin/items/:id', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
     const item = await RedeemableItem.findByIdAndUpdate(req.params.id, req.body, { new: true });
     res.json(item);
@@ -237,7 +247,7 @@ router.put('/admin/items/:id', verifyToken, adminOnly, async (req, res) => {
 });
 
 // DELETE /api/users/admin/items/:id -> Remove item
-router.delete('/admin/items/:id', verifyToken, adminOnly, async (req, res) => {
+router.delete('/admin/items/:id', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
     await RedeemableItem.findByIdAndDelete(req.params.id);
     res.json({ message: 'Item removed from vault.' });

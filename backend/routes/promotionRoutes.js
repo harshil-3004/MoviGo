@@ -50,6 +50,29 @@ router.get('/active', async (req, res) => {
   }
 });
 
+// GET /api/promotions/usage-history -> Admin: get all bookings that used promo codes
+router.get('/usage-history', verifyToken, theaterAdminOnly, async (req, res) => {
+  try {
+    const Booking = require('../models/Booking');
+    const bookings = await Booking.find({
+      promoCode: { $ne: null, $exists: true },
+      status: 'Confirmed'
+    })
+      .populate('user', 'name email')
+      .populate({
+        path: 'showtime',
+        populate: [
+          { path: 'movie', select: 'title' },
+          { path: 'theater', select: 'name location' }
+        ]
+      })
+      .sort({ createdAt: -1 });
+    res.json(bookings);
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching promo usage history' });
+  }
+});
+
 // POST /api/promotions/validate -> Consumer validates coupon (Public)
 router.post('/validate', async (req, res) => {
   const { code, theaterId } = req.body;

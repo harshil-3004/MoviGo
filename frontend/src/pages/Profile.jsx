@@ -22,11 +22,14 @@ import {
   History,
   Eye,
   EyeOff,
-  Menu
+  Menu,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Button from '../components/common/Button';
 import Modal from '../components/common/Modal';
+import LogoutModal from '../components/common/LogoutModal';
 import { logout, login } from '../store/authSlice';
 import { fetchApi } from '../services/api';
 
@@ -58,6 +61,20 @@ const Profile = () => {
   const [userRedemptions, setUserRedemptions] = useState([]);
   const [selectedRedemption, setSelectedRedemption] = useState(null);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isLightMode, setIsLightMode] = useState(
+    localStorage.getItem('theme') === 'light'
+  );
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (isLightMode) {
+      document.body.classList.add('light-theme');
+      localStorage.setItem('theme', 'light');
+    } else {
+      document.body.classList.remove('light-theme');
+      localStorage.setItem('theme', 'dark');
+    }
+  }, [isLightMode]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -218,8 +235,7 @@ const Profile = () => {
   };
 
   const handleLogout = () => {
-    dispatch(logout());
-    navigate('/');
+    setIsLogoutModalOpen(true);
   };
 
   const navItems = [
@@ -744,25 +760,41 @@ const Profile = () => {
                   )}
                </div>
 
-               {/* Static Settings (Placeholders) */}
+               {/* Preferences & Settings */}
                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {[
-                    { label: 'Privacy Vault', sub: 'Invisibility modes', icon: <Activity /> },
-                    { label: 'Notification Relay', sub: 'Cinematic alerts', icon: <Film /> },
-                  ].map((item, i) => (
-                    <div key={i} className="bg-surface/30 border border-white/5 rounded-[2rem] p-6 flex items-center justify-between opacity-50 cursor-not-allowed">
-                       <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-muted">
-                             {React.cloneElement(item.icon, { className: "w-5 h-5" })}
-                          </div>
-                          <div>
-                             <h4 className="font-bold text-white text-md">{item.label}</h4>
-                             <p className="text-[10px] text-muted uppercase font-black">{item.sub}</p>
-                          </div>
-                       </div>
-                       <X className="w-4 h-4 text-muted/20" />
-                    </div>
-                  ))}
+                  {/* Theme Toggle Button */}
+                  <div 
+                    onClick={() => setIsLightMode(!isLightMode)}
+                    className="bg-surface/30 border border-white/5 rounded-[2rem] p-6 flex items-center justify-between hover:bg-surface/50 cursor-pointer transition-all group shadow-sm"
+                  >
+                     <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
+                           {isLightMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                        </div>
+                        <div>
+                           <h4 className="font-bold text-white text-md">Application Theme</h4>
+                           <p className="text-[10px] text-muted uppercase font-black">
+                             {isLightMode ? 'Light Mode Active' : 'Dark Mode Active'}
+                           </p>
+                        </div>
+                     </div>
+                     <div className="w-12 h-6 bg-black/40 rounded-full relative border border-white/10 flex items-center px-1 transition-colors">
+                        <div className={`w-4 h-4 rounded-full bg-primary transition-all duration-300 ${isLightMode ? 'translate-x-6' : 'translate-x-0'}`}></div>
+                     </div>
+                  </div>
+
+                  <div className="bg-surface/30 border border-white/5 rounded-[2rem] p-6 flex items-center justify-between opacity-50 cursor-not-allowed">
+                     <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-muted">
+                           <Film className="w-5 h-5" />
+                        </div>
+                        <div>
+                           <h4 className="font-bold text-white text-md">Notification Relay</h4>
+                           <p className="text-[10px] text-muted uppercase font-black">Cinematic alerts</p>
+                        </div>
+                     </div>
+                     <X className="w-4 h-4 text-muted/20" />
+                  </div>
                </div>
                
                <div className="mt-12 pt-12 border-t border-white/10">
@@ -960,6 +992,11 @@ const Profile = () => {
            </Button>
         </div>
       </Modal>
+
+      <LogoutModal 
+        isOpen={isLogoutModalOpen} 
+        onClose={() => setIsLogoutModalOpen(false)} 
+      />
     </div>
   );
 };

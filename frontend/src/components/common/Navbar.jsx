@@ -8,6 +8,7 @@ import { getTrendingMovies } from '../../services/movieService';
 import { getTheaters } from '../../services/theaterService';
 import Modal from './Modal';
 import Button from './Button';
+import LogoutModal from './LogoutModal';
 
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -20,6 +21,7 @@ const Navbar = () => {
   
   // Navigation Guard State
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [pendingPath, setPendingPath] = useState(null);
   
   const location = useLocation();
@@ -177,7 +179,7 @@ const Navbar = () => {
               
               {/* Search Suggestions Dropdown */}
               {isSearchOpen && suggestions.length > 0 && (
-                <div className="absolute top-full right-0 mt-2 w-72 bg-[#14161a] border border-white/10 rounded-2xl shadow-2xl py-2 z-[100] animate-in slide-in-from-top-2">
+                <div className="absolute top-full right-0 mt-2 w-72 bg-base border border-white/10 rounded-2xl shadow-2xl py-2 z-[100] animate-in slide-in-from-top-2">
                   {suggestions.map((item, idx) => (
                     <div 
                       key={`${item.type}-${item._id || item.id}-${idx}`}
@@ -205,7 +207,7 @@ const Navbar = () => {
                 </button>
 
                 {/* Secure Dropdown */}
-                <div className="absolute right-0 mt-2 w-48 bg-[#14161a] border border-white/10 rounded-2xl shadow-xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right group-hover:translate-y-0 translate-y-2 z-50">
+                <div className="absolute right-0 mt-2 w-48 bg-base border border-white/10 rounded-2xl shadow-xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right group-hover:translate-y-0 translate-y-2 z-50">
                   <Link to="/profile" onClick={(e) => handleNavClick(e, '/profile')} className="flex items-center w-full px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">
                     <User className="w-4 h-4 mr-2" /> My Profile
                   </Link>
@@ -218,7 +220,7 @@ const Navbar = () => {
                     </Link>
                   )}
                   <div className="h-px bg-white/10 my-2"></div>
-                  <button onClick={() => isCheckoutLocked ? setShowLeaveModal(true) : dispatch(logout())} className="flex items-center w-full px-4 py-2.5 text-sm text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-colors">
+                  <button onClick={() => isCheckoutLocked ? setShowLeaveModal(true) : setIsLogoutModalOpen(true)} className="flex items-center w-full px-4 py-2.5 text-sm text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-colors">
                     <span className="w-4 h-4 mr-2">🚪</span> Sign Out
                   </button>
                 </div>
@@ -291,7 +293,7 @@ const Navbar = () => {
                 <button
                   onClick={() => {
                     setIsMobileMenuOpen(false);
-                    isCheckoutLocked ? setShowLeaveModal(true) : dispatch(logout());
+                    isCheckoutLocked ? setShowLeaveModal(true) : setIsLogoutModalOpen(true);
                   }}
                   className="block text-base font-medium text-red-500 w-full text-left"
                 >
@@ -330,6 +332,11 @@ const Navbar = () => {
            </div>
         </div>
       </Modal>
+
+      <LogoutModal 
+        isOpen={isLogoutModalOpen} 
+        onClose={() => setIsLogoutModalOpen(false)} 
+      />
     </nav>
   );
 };

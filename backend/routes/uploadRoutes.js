@@ -16,12 +16,17 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter (optional, to accept only images)
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+  const allowedMimeTypes = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf', 'application/msword', 
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'video/mp4', 'audio/mpeg'
+  ];
+  if (allowedMimeTypes.includes(file.mimetype) || file.mimetype.startsWith('image/')) {
     cb(null, true);
   } else {
-    cb(new Error('Not an image! Please upload an image.'), false);
+    cb(new Error('Invalid file type! Please upload an image, document, or media file.'), false);
   }
 };
 
@@ -32,7 +37,7 @@ const upload = multer({
 });
 
 // POST /api/upload
-router.post('/', upload.single('image'), (req, res) => {
+router.post('/', upload.single('file'), (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: 'No file uploaded' });
@@ -45,7 +50,7 @@ router.post('/', upload.single('image'), (req, res) => {
     const host = req.get('host');
     const fileUrl = `${protocol}://${host}/uploads/${req.file.filename}`;
     
-    res.status(200).json({ url: fileUrl, message: 'Image uploaded successfully' });
+    res.status(200).json({ url: fileUrl, message: 'File uploaded successfully' });
   } catch (error) {
     console.error('Upload Error:', error);
     res.status(500).json({ message: 'Server error during upload' });

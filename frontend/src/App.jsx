@@ -66,6 +66,7 @@ import AdminScreenManagement from './pages/admin/AdminScreenManagement';
 import AdminShowtimeManagement from './pages/admin/AdminShowtimeManagement';
 import AdminLoyaltyStore from './pages/admin/AdminLoyaltyStore';
 import AdminScanner from './pages/admin/AdminScanner';
+import AdminChat from './pages/admin/AdminChat';
 import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
 
 const ConsumerLayout = () => (
@@ -81,6 +82,14 @@ const ConsumerLayout = () => (
 );
 
 function App() {
+  useEffect(() => {
+    if (localStorage.getItem('theme') === 'light') {
+      document.body.classList.add('light-theme');
+    } else {
+      document.body.classList.remove('light-theme');
+    }
+  }, []);
+
   return (
     <Router>
       <div className="min-h-screen flex flex-col relative bg-base text-white overflow-hidden">
@@ -105,6 +114,7 @@ function App() {
               <Route path="bookings" element={<AdminBookings />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="loyalty" element={<AdminLoyaltyStore />} />
+              <Route path="chat" element={<AdminChat />} />
               <Route path="settings" element={<AdminSettings />} />
               <Route path="screens/:theaterId" element={<AdminScreenManagement />} />
               <Route path="showtimes/:theaterId" element={<AdminShowtimeManagement />} />

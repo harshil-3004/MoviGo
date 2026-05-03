@@ -6,7 +6,7 @@ const UserSchema = new mongoose.Schema({
   mobile: { type: String, default: null }, // Required for new registrations, optional to allow seed compatibility
   password: { type: String, required: true },
   profilePhoto: { type: String, default: null },
-  role: { type: String, enum: ['user', 'admin', 'theater_admin'], default: 'user' },
+  role: { type: String, enum: ['user', 'admin', 'master_admin', 'theater_admin'], default: 'user' },
   theaterIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Theater' }], // Bound to specific theaters if role is theater_admin
   rewardPoints: { type: Number, default: 0 },
   membershipLevel: { type: String, enum: ['Basic', 'Silver', 'Gold'], default: 'Basic' },

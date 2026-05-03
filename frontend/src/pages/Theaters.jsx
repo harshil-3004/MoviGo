@@ -60,37 +60,8 @@ const Theaters = () => {
         ]);
         
         setMovie(movieData);
-        
-        // If no showtimes exist for this movie, generate demo ones
-        if (showtimeData.length === 0) {
-          const demoShowtimes = [
-            {
-              _id: 'demo1',
-              theater: { name: 'Cineplex IMAX - City Center', location: '123 Main St, Downtown', format: 'IMAX 2D' },
-              date: formatDateToISO(new Date()),
-              time: '10:30 AM',
-              bookedSeats: ['A1', 'A2']
-            },
-            {
-              _id: 'demo2',
-              theater: { name: 'Cineplex IMAX - City Center', location: '123 Main St, Downtown', format: 'IMAX 2D' },
-              date: formatDateToISO(new Date()),
-              time: '02:00 PM',
-              bookedSeats: []
-            },
-            {
-              _id: 'demo3',
-              theater: { name: 'Starlight Cinemas & Dining', location: 'North Mall, 3rd Floor', format: 'Standard 2D' },
-              date: formatDateToISO(new Date()),
-              time: '06:00 PM',
-              bookedSeats: []
-            }
-          ];
-          setAllShowtimes(demoShowtimes);
-        } else {
-          setAllShowtimes(showtimeData);
-        }
-        
+        // Only set real showtimes — no dummy fallback
+        setAllShowtimes(showtimeData);
         setIsLoading(false);
       } catch (error) {
         console.error("Error loading theater data:", error);
@@ -199,7 +170,7 @@ const Theaters = () => {
         
         {/* Custom Calendar Popup */}
         {isCalendarOpen && (
-          <div className="absolute top-[85px] left-4 w-80 bg-[#16171d]/95 backdrop-blur-3xl border border-white/20 rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.9)] p-6 z-50 animate-in fade-in slide-in-from-top-4">
+          <div className="absolute top-[85px] left-4 w-80 bg-base/95 backdrop-blur-3xl border border-white/20 rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.9)] p-6 z-50 animate-in fade-in slide-in-from-top-4">
             <div className="flex items-center justify-between mb-6">
               <button onClick={handlePrevMonth} className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-colors text-white/50 hover:text-white border border-white/5"><ChevronLeft className="w-4 h-4" /></button>
               <div className="text-white font-bold text-sm tracking-widest uppercase">{monthYearRow}</div>
@@ -210,25 +181,48 @@ const Theaters = () => {
             </div>
             <div className="grid grid-cols-7 gap-2 text-center">
               {blanks.map(b => <div key={b}></div>)}
-              {days.map(dayInfo => (
+              {days.map(dayInfo => {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const dayDate = new Date(dayInfo.iso);
+                const isPast = dayDate < today;
+                return (
                 <button
                   key={dayInfo.number}
+                  disabled={isPast}
                   onClick={() => {
-                    if (!availableDates.find(d => d.iso === dayInfo.iso)) {
-                       setAvailableDates(prev => [...prev, { iso: dayInfo.iso, label: dayInfo.label }]);
+                    if (isPast) return;
+                    // Reset availableDates back to initial 5 days + the new pick
+                    const baseInitial = [];
+                    for (let i = 0; i < 5; i++) {
+                      const d = new Date();
+                      d.setDate(d.getDate() + i);
+                      baseInitial.push({
+                        iso: formatDateToISO(d),
+                        label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : d.toLocaleDateString('en-US', { weekday: 'short', day: 'numeric', month: 'short' })
+                      });
+                    }
+                    const alreadyInBase = baseInitial.find(d => d.iso === dayInfo.iso);
+                    if (!alreadyInBase) {
+                      setAvailableDates([...baseInitial, { iso: dayInfo.iso, label: dayInfo.label }]);
+                    } else {
+                      setAvailableDates(baseInitial);
                     }
                     setSelectedDate(dayInfo.label);
                     setIsCalendarOpen(false);
                   }}
                   className={`w-9 h-9 rounded-xl text-xs font-bold mx-auto flex items-center justify-center transition-all ${
-                     getSelectedISO() === dayInfo.iso 
+                     isPast
+                     ? 'text-white/15 cursor-not-allowed'
+                     : getSelectedISO() === dayInfo.iso 
                      ? 'bg-primary text-white shadow-[0_0_20px_rgba(244,63,94,0.6)] scale-110' 
                      : 'text-white/60 hover:bg-white/10 hover:text-white border border-transparent'
                   }`}
                 >
                   {dayInfo.number}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -263,12 +257,12 @@ const Theaters = () => {
       {/* Theaters List */}
       <div className="space-y-8 min-h-[400px]">
         {filteredShowtimes().length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 bg-surface/20 rounded-[2.5rem] border border-white/5 backdrop-blur-sm">
+          <div className="flex flex-col items-center justify-center py-24 bg-surface/20 rounded-[2.5rem] border border-dashed border-white/10 backdrop-blur-sm">
              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-6">
                 <Clock className="w-10 h-10 text-muted" />
              </div>
-             <h3 className="text-2xl font-bold text-white mb-2 font-outfit">No Shows Available</h3>
-             <p className="text-muted text-center max-w-sm px-4">There are no showtimes scheduled for {selectedDate}. Please try another date or check back later.</p>
+             <h3 className="text-2xl font-bold text-white mb-2 font-outfit">Currently No Shows Available</h3>
+             <p className="text-muted text-center max-w-sm px-4">There are no showtimes scheduled for <span className="text-white font-semibold">{selectedDate}</span>. Please try a different date or check back later.</p>
           </div>
         ) : filteredShowtimes().map((theater) => (
           <div key={theater.name} className="bg-surface/30 border border-white/5 rounded-[2.5rem] p-8 transition-all hover:bg-surface/50 hover:border-white/10 group">

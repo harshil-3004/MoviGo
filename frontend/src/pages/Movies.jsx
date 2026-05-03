@@ -147,7 +147,7 @@ const Movies = () => {
               onChange={(e) => setSelectedGenre(e.target.value)}
               className="appearance-none bg-surface/50 border border-white/10 rounded-2xl py-3 pl-11 pr-10 text-white w-full sm:w-48 focus:outline-none focus:border-primary/50 transition-all backdrop-blur-md cursor-pointer"
             >
-              {genres.map(g => <option key={g} value={g} className="bg-[#14161a]">{g}</option>)}
+              {genres.map(g => <option key={g} value={g} className="bg-base">{g}</option>)}
             </select>
             <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-muted">▼</div>
           </div>

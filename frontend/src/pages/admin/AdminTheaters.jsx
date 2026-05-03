@@ -270,7 +270,7 @@ const AdminTheaters = () => {
                               <Plus className="w-5 h-5" />
                            </button>
                            {/* High-Opacity Solid Background to fix visibility issues */}
-                           <div className="absolute left-0 bottom-full mb-4 w-64 bg-[#15161D] border border-white/20 rounded-2xl p-4 shadow-[0_30px_60px_rgba(0,0,0,0.9)] opacity-0 invisible group-hover/assign:opacity-100 group-hover/assign:visible transition-all z-[100]">
+                           <div className="absolute left-0 bottom-full mb-4 w-64 bg-base border border-white/20 rounded-2xl p-4 shadow-[0_30px_60px_rgba(0,0,0,0.9)] opacity-0 invisible group-hover/assign:opacity-100 group-hover/assign:visible transition-all z-[100]">
                               <p className="text-[10px] font-black uppercase text-primary tracking-[0.2em] mb-4 px-1">Authorize Personnel</p>
                               <div className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar">
                                  {staff.filter(s => s.role === 'theater_admin' && (!s.theaterIds || !s.theaterIds.includes(theater._id))).map(admin => (

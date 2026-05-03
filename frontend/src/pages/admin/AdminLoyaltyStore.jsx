@@ -45,7 +45,8 @@ const AdminLoyaltyStore = () => {
 
   const fetchItems = async () => {
     try {
-      const data = await fetchApi('/users/redeemable-items');
+      // Use admin endpoint to get ALL items (active + inactive)
+      const data = await fetchApi('/users/admin/items');
       setItems(data);
       setIsLoading(false);
     } catch (error) {
@@ -133,6 +134,9 @@ const AdminLoyaltyStore = () => {
     item.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const availableItems = filteredItems.filter(item => item.isAvailable);
+  const inactiveItems = filteredItems.filter(item => !item.isAvailable);
+
   return (
     <div className="p-8">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
@@ -140,7 +144,7 @@ const AdminLoyaltyStore = () => {
           <h1 className="text-3xl font-black text-white font-outfit uppercase tracking-tighter">Loyalty Store Vault</h1>
           <p className="text-muted text-sm">Manage redeemable artifacts and track redemption history</p>
         </div>
-        {activeTab === 'items' && user?.role === 'admin' && (
+        {activeTab === 'items' && (user?.role === 'admin' || user?.role === 'theater_admin') && (
           <Button onClick={() => handleOpenModal()} className="shadow-[0_0_20px_rgba(244,63,94,0.3)]">
             <Plus className="w-5 h-5 mr-2" /> Add New Artifact
           </Button>
@@ -254,47 +258,115 @@ const AdminLoyaltyStore = () => {
               <p className="text-muted italic">No artifacts found in this sector.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredItems.map(item => (
-                <div key={item._id} className="bg-surface/50 border border-white/10 rounded-3xl overflow-hidden group hover:border-primary/40 transition-all border-glow">
-                  <div className="h-48 relative overflow-hidden bg-black/40">
-                    {item.image ? (
-                      <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <ImageIcon className="w-12 h-12 text-white/10" />
-                      </div>
-                    )}
-                    <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-1.5">
-                      <Coins className="w-3.5 h-3.5 text-secondary" />
-                      <span className="text-sm font-black text-white">{item.pointCost}</span>
-                    </div>
+            <div className="space-y-10">
+              {/* Active Items Section */}
+              {availableItems.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-white/60">Active Items ({availableItems.length})</h2>
                   </div>
-                  <div className="p-6">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="text-xl font-bold text-white font-outfit">{item.name}</h3>
-                      <span className="text-[10px] font-black uppercase text-primary tracking-widest px-2 py-1 bg-primary/10 rounded-lg">{item.category}</span>
-                    </div>
-                    <p className="text-xs text-muted line-clamp-2 mb-6 h-8">{item.description}</p>
-                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${item.isAvailable ? 'bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-red-500'}`}></div>
-                        <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">{item.isAvailable ? 'In Stock' : 'Out of Stock'}</span>
-                      </div>
-                      {user?.role === 'admin' && (
-                        <div className="flex gap-2">
-                          <button onClick={() => handleOpenModal(item)} className="p-2 bg-white/5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-xl transition-all border border-white/5">
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleDelete(item._id)} className="p-2 bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-500 rounded-xl transition-all border border-white/5">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {availableItems.map(item => (
+                      <div key={item._id} className="bg-surface/50 border border-white/10 rounded-3xl overflow-hidden group hover:border-primary/40 transition-all">
+                        <div className="h-48 relative overflow-hidden bg-black/40">
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ImageIcon className="w-12 h-12 text-white/10" />
+                            </div>
+                          )}
+                          <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-1.5">
+                            <Coins className="w-3.5 h-3.5 text-secondary" />
+                            <span className="text-sm font-black text-white">{item.pointCost}</span>
+                          </div>
                         </div>
-                      )}
-                    </div>
+                        <div className="p-6">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-xl font-bold text-white font-outfit">{item.name}</h3>
+                            <span className="text-[10px] font-black uppercase text-primary tracking-widest px-2 py-1 bg-primary/10 rounded-lg">{item.category}</span>
+                          </div>
+                          <p className="text-xs text-muted line-clamp-2 mb-6 h-8">{item.description}</p>
+                          <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
+                              <span className="text-[10px] font-bold text-white/40 uppercase tracking-tighter">In Stock</span>
+                            </div>
+                            {(user?.role === 'admin' || user?.role === 'theater_admin') && (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleOpenModal(item)} className="p-2 bg-white/5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-xl transition-all border border-white/5">
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => handleDelete(item._id)} className="p-2 bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-500 rounded-xl transition-all border border-white/5">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* Inactive Items Section */}
+              {inactiveItems.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-2 h-2 rounded-full bg-red-500/70"></div>
+                    <h2 className="text-sm font-black uppercase tracking-widest text-white/40">Inactive / Unavailable ({inactiveItems.length})</h2>
+                    <div className="flex-1 h-px bg-white/5"></div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {inactiveItems.map(item => (
+                      <div key={item._id} className="bg-surface/20 border border-white/5 rounded-3xl overflow-hidden group hover:border-white/10 transition-all opacity-60">
+                        <div className="h-48 relative overflow-hidden bg-black/40 grayscale">
+                          {item.image ? (
+                            <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <ImageIcon className="w-12 h-12 text-white/10" />
+                            </div>
+                          )}
+                          <div className="absolute inset-0 bg-black/40"></div>
+                          <div className="absolute top-4 left-4 bg-red-500/20 backdrop-blur-md px-3 py-1 rounded-xl border border-red-500/20">
+                            <span className="text-[10px] font-black uppercase text-red-400 tracking-widest">Inactive</span>
+                          </div>
+                          <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 flex items-center gap-1.5">
+                            <Coins className="w-3.5 h-3.5 text-white/40" />
+                            <span className="text-sm font-black text-white/40">{item.pointCost}</span>
+                          </div>
+                        </div>
+                        <div className="p-6">
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="text-xl font-bold text-white/60 font-outfit">{item.name}</h3>
+                            <span className="text-[10px] font-black uppercase text-white/30 tracking-widest px-2 py-1 bg-white/5 rounded-lg">{item.category}</span>
+                          </div>
+                          <p className="text-xs text-muted/60 line-clamp-2 mb-6 h-8">{item.description}</p>
+                          <div className="flex items-center justify-between pt-4 border-t border-white/5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-red-500/70"></div>
+                              <span className="text-[10px] font-bold text-white/30 uppercase tracking-tighter">Inactive</span>
+                            </div>
+                            {(user?.role === 'admin' || user?.role === 'theater_admin') && (
+                              <div className="flex gap-2">
+                                <button onClick={() => handleOpenModal(item)} className="p-2 bg-white/5 hover:bg-primary/20 text-white/40 hover:text-primary rounded-xl transition-all border border-white/5">
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => handleDelete(item._id)} className="p-2 bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-500 rounded-xl transition-all border border-white/5">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

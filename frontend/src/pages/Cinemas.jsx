@@ -131,7 +131,7 @@ const Cinemas = () => {
 
       {/* Map Placeholder for Rich Aesthetics */}
       <div className="mt-20 relative h-[400px] rounded-[2.5rem] overflow-hidden border border-white/10 shadow-2xl">
-         <div className="absolute inset-0 bg-[#0a0b10] flex items-center justify-center">
+         <div className="absolute inset-0 bg-base flex items-center justify-center">
             <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.05) 1px, transparent 0)', backgroundSize: '40px 40px' }}></div>
             <div className="relative z-10 text-center px-6">
                <div className="w-20 h-20 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-primary/40 animate-pulse">

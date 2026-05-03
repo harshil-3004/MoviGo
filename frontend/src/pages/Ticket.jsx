@@ -79,7 +79,7 @@ const Ticket = () => {
         </div>
 
         {/* Digital Ticket */}
-        <div id="digital-ticket" className="bg-[#1a1d24] border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative">
+        <div id="digital-ticket" className="bg-base border border-white/10 rounded-3xl overflow-hidden shadow-2xl relative">
           
           {/* Ticket Header */}
           <div className="bg-surface/50 border-b border-white/5 p-6 flex justify-between items-center relative overflow-hidden">

@@ -138,7 +138,11 @@ const AdminBookings = () => {
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest ${
-                      booking.status === 'Confirmed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'
+                      booking.status === 'Confirmed' ? 'bg-green-500/10 text-green-400 border border-green-500/20' :
+                      booking.status === 'Pending' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                      booking.status === 'Failed' ? 'bg-red-500/10 text-red-400 border border-red-500/20' :
+                      booking.status === 'Cancelled' ? 'bg-white/5 text-white/40 border border-white/10' :
+                      'bg-red-500/10 text-red-400 border border-red-500/20'
                     }`}>
                       {booking.status}
                     </span>
@@ -158,10 +162,17 @@ const AdminBookings = () => {
       {/* Receipt Modal */}
       <Modal isOpen={isReceiptOpen} onClose={() => setIsReceiptOpen(false)} title="Booking Receipt">
         {selectedBooking && (
-          <div id="booking-receipt" className="space-y-6 text-white font-outfit p-1 bg-[#1a1d24]">
+          <div id="booking-receipt" className="space-y-6 text-white font-outfit p-1 bg-base">
             <div className="flex justify-between items-start border-b border-white/10 pb-4">
                <div>
-                  <h3 className="text-xl font-bold text-primary mb-1">Receipt Confirmed</h3>
+                  <h3 className={`text-xl font-bold mb-1 ${
+                    selectedBooking.status === 'Confirmed' ? 'text-green-400' : 
+                    selectedBooking.status === 'Pending' ? 'text-amber-400' : 
+                    selectedBooking.status === 'Failed' ? 'text-red-400' :
+                    'text-white/60'
+                  }`}>
+                    Receipt {selectedBooking.status}
+                  </h3>
                   <p className="text-[10px] uppercase tracking-widest text-muted">ID: {selectedBooking.bookingIdString}</p>
                </div>
                <div className="text-right">
@@ -213,26 +224,32 @@ const AdminBookings = () => {
             </div>
 
             <div className="flex justify-center pt-4 no-print">
-               <Button 
-                onClick={async () => {
-                  try {
-                    setIsDownloading(true);
-                    await downloadBookingPDF(selectedBooking._id, `Receipt_${selectedBooking.bookingIdString}.pdf`);
-                  } catch (err) {
-                    alert("Download failed");
-                  } finally {
-                    setIsDownloading(false);
-                  }
-                }} 
-                disabled={isDownloading}
-                className="w-full sm:w-auto"
-               >
-                 {isDownloading ? (
-                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</>
-                 ) : (
-                   <><Download className="w-4 h-4 mr-2" /> Download Offline PDF</>
-                 )}
-               </Button>
+               {selectedBooking.status === 'Confirmed' ? (
+                 <Button 
+                  onClick={async () => {
+                    try {
+                      setIsDownloading(true);
+                      await downloadBookingPDF(selectedBooking._id, `Receipt_${selectedBooking.bookingIdString}.pdf`);
+                    } catch (err) {
+                      alert("Download failed");
+                    } finally {
+                      setIsDownloading(false);
+                    }
+                  }} 
+                  disabled={isDownloading}
+                  className="w-full sm:w-auto"
+                 >
+                   {isDownloading ? (
+                     <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</>
+                   ) : (
+                     <><Download className="w-4 h-4 mr-2" /> Download Offline PDF</>
+                   )}
+                 </Button>
+               ) : (
+                 <p className="text-sm text-red-400 bg-red-500/10 px-4 py-2 rounded-lg border border-red-500/20">
+                   PDF Download is only available for Confirmed bookings.
+                 </p>
+               )}
             </div>
           </div>
         )}
