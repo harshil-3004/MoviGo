@@ -3,8 +3,8 @@ const nodemailer = require('nodemailer');
 // Create reusable transporter — uses explicit SMTP for better reliability on Render
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 465,
-  secure: true, // Use SSL
+  port: 587,
+  secure: false, // Use TLS/STARTTLS
   pool: true,
   maxConnections: 1,
   maxMessages: 10,
@@ -12,6 +12,10 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS  // App password, not regular password
+  },
+  tls: {
+    rejectUnauthorized: false, // Helps with some cloud network restrictions
+    minVersion: 'TLSv1.2'
   }
 });
 
