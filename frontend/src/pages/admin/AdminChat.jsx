@@ -513,7 +513,7 @@ const AdminChat = () => {
         /* Empty state (desktop) */
         <div className="hidden md:flex flex-1 flex-col items-center justify-center text-center p-10" style={{ background: 'var(--color-base)' }}>
           <div className="w-20 h-20 rounded-full flex items-center justify-center mb-5 border border-primary/20" style={{ background: 'rgba(244,63,94,0.08)' }}>
-            <img src="/src/assets/Logo.png" alt="MoviGo" className="h-8 opacity-50 grayscale" />
+            <img src="/Logo.png" alt="MoviGo" className="h-8 opacity-50 grayscale" />
           </div>
           <h3 className="text-xl font-bold mb-2 font-outfit" style={{ color: 'var(--color-white)' }}>MoviGo Connect</h3>
           <p className="text-sm max-w-xs" style={{ color: 'var(--color-muted)' }}>

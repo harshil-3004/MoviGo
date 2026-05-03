@@ -109,7 +109,7 @@ const AdminLayout = () => {
       `}>
         <div className="p-6 border-b border-white/10 flex items-center justify-between flex-shrink-0">
           <Link to="/admin" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
-            <img src="/src/assets/Logo.png" alt="MoviGo Logo" className="h-6 object-contain drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]" />
+            <img src="/Logo.png" alt="MoviGo Logo" className="h-6 object-contain drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]" />
             <span className="text-[10px] uppercase bg-primary/20 text-primary px-2 py-0.5 rounded font-bold tracking-wider ml-1">Admin</span>
           </Link>
           <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-white/50 hover:text-white">
@@ -177,7 +177,7 @@ const AdminLayout = () => {
           <button onClick={toggleMobileMenu} className="p-2 text-white/70 hover:text-white bg-white/5 rounded-lg border border-white/10">
             <Menu className="w-6 h-6" />
           </button>
-          <img src="/src/assets/Logo.png" alt="Logo" className="h-5" />
+          <img src="/Logo.png" alt="Logo" className="h-5" />
           <div className="relative">
             {unreadCount > 0 && !isOnChatPage && (
               <Link to="/admin/chat" className="relative p-2 text-primary">

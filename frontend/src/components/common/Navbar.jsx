@@ -128,7 +128,7 @@ const Navbar = () => {
           {/* Logo */}
           <div className="flex-1 flex justify-start">
             <Link to="/" onClick={(e) => handleNavClick(e, '/')} className="flex items-center space-x-3 group transition-transform duration-300 hover:scale-105">
-              <img src="/src/assets/Logo.png" alt="MoviGo Logo" className="h-8 object-contain drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]" />
+              <img src="/Logo.png" alt="MoviGo Logo" className="h-8 object-contain drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]" />
             </Link>
           </div>
 
