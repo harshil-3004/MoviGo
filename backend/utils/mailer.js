@@ -1,15 +1,26 @@
 const nodemailer = require('nodemailer');
 
-// Create reusable transporter — uses Gmail by default
-// For production, use a dedicated email service (SendGrid, Mailgun, etc.)
+// Create reusable transporter — uses explicit SMTP for better reliability on Render
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 465,
+  secure: true, // Use SSL
   pool: true,
   maxConnections: 1,
   maxMessages: 10,
+  connectionTimeout: 10000, // 10 seconds timeout
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS  // App password, not regular password
+  }
+});
+
+// Verify connection configuration
+transporter.verify((error, success) => {
+  if (error) {
+    console.error('❌ Mailer Connection Error:', error);
+  } else {
+    console.log('✅ Mailer ready for production');
   }
 });
 
@@ -133,7 +144,13 @@ const sendOtpEmail = async (email, otp, purpose, userName = '') => {
     html: buildOtpEmail(otp, purpose, userName)
   };
 
-  await transporter.sendMail(mailOptions);
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ OTP sent successfully to ${email}`);
+  } catch (error) {
+    console.error(`❌ Failed to send OTP to ${email}:`, error);
+    throw error;
+  }
 };
 
 module.exports = { generateOTP, sendOtpEmail };
