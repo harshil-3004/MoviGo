@@ -1,10 +1,9 @@
 const nodemailer = require('nodemailer');
-
-// Create reusable transporter — with FULL DEBUGGING for Render
+// Create reusable transporter — Switching to Port 465 (Direct SSL)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use STARTTLS
+  port: 465,
+  secure: true, // Use Direct SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -13,28 +12,25 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'
   },
-  debug: true, // Show SMTP traffic
-  logger: true, // Log to console
+  debug: true,
+  logger: true,
   connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 10000
 });
-
 // Verify connection configuration immediately
-console.log('📬 Starting Mailer Verification (with Debugging)...');
+console.log('📬 Starting Mailer Verification (Port 465)...');
 transporter.verify((error, success) => {
   if (error) {
     console.error('❌ Mailer Connection Error Details:', error);
   } else {
-    console.log('✅ Mailer ready for production (Port 587)');
+    console.log('✅ Mailer ready for production (Port 465)');
   }
 });
-
 // Generate a 6-digit OTP
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
 };
-
 // Build premium HTML email template
 const buildOtpEmail = (otp, purpose, userName = '') => {
   const isReset = purpose === 'reset';
@@ -44,7 +40,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
     : 'Welcome to MoviGo! Use the code below to complete your registration.';
   const accentColor = isReset ? '#8b5cf6' : '#f43f5e';
   const greeting = userName ? `Hey ${userName},` : 'Hey there,';
-
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -69,7 +64,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
               <p style="margin:8px 0 0;color:rgba(255,255,255,0.4);font-size:10px;letter-spacing:3px;text-transform:uppercase;font-weight:700;">${isReset ? 'Security Protocol' : 'Identity Verification'}</p>
             </td>
           </tr>
-
           <!-- Body -->
           <tr>
             <td style="padding:30px 40px;">
@@ -78,7 +72,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
               <p style="color:rgba(255,255,255,0.5);font-size:14px;line-height:1.7;margin:0 0 30px;">${subtitle}</p>
             </td>
           </tr>
-
           <!-- OTP Code Block -->
           <tr>
             <td style="padding:0 40px;">
@@ -93,7 +86,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
               </table>
             </td>
           </tr>
-
           <!-- Security Notice -->
           <tr>
             <td style="padding:30px 40px;">
@@ -117,7 +109,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
               </table>
             </td>
           </tr>
-
           <!-- Footer -->
           <tr>
             <td style="padding:20px 40px 40px;text-align:center;border-top:1px solid rgba(255,255,255,0.05);">
@@ -127,7 +118,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
               </p>
             </td>
           </tr>
-
         </table>
       </td>
     </tr>
@@ -135,21 +125,18 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
 </body>
 </html>`;
 };
-
 // Send OTP email
 const sendOtpEmail = async (email, otp, purpose, userName = '') => {
   const isReset = purpose === 'reset';
   const subject = isReset
     ? '🔐 MoviGo — Password Reset Code'
     : '🎬 MoviGo — Verify Your Email';
-
   const mailOptions = {
     from: `"MoviGo" <${process.env.EMAIL_USER}>`,
     to: email,
     subject,
     html: buildOtpEmail(otp, purpose, userName)
   };
-
   try {
     await transporter.sendMail(mailOptions);
     console.log(`✅ OTP sent successfully to ${email}`);
@@ -158,5 +145,4 @@ const sendOtpEmail = async (email, otp, purpose, userName = '') => {
     throw error;
   }
 };
-
 module.exports = { generateOTP, sendOtpEmail };
