@@ -2,15 +2,16 @@ const nodemailer = require('nodemailer');
 
 // Create reusable transporter — uses Gmail by default
 // For production, use a dedicated email service (SendGrid, Mailgun, etc.)
-const createTransporter = () => {
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS  // App password, not regular password
-    }
-  });
-};
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  pool: true,
+  maxConnections: 1,
+  maxMessages: 10,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS  // App password, not regular password
+  }
+});
 
 // Generate a 6-digit OTP
 const generateOTP = () => {
@@ -120,8 +121,6 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
 
 // Send OTP email
 const sendOtpEmail = async (email, otp, purpose, userName = '') => {
-  const transporter = createTransporter();
-
   const isReset = purpose === 'reset';
   const subject = isReset
     ? '🔐 MoviGo — Password Reset Code'
