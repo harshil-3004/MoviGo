@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const { connectDB } = require('./utils/db');
 
 const Movie = require('./models/Movie');
 const User = require('./models/User');
@@ -9,44 +11,78 @@ const Showtime = require('./models/Showtime');
 const Booking = require('./models/Booking');
 const Promotion = require('./models/Promotion');
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/movigo';
-
-const MOCK_MOVIES = [
+const REAL_MOVIES = [
   {
-    title: "Monkey Man",
-    description: "An anonymous young man unleashes a campaign of vengeance against the corrupt leaders who murdered his mother and continue to systemically victimize the poor and powerless.",
-    genre: "Action/Thriller",
-    rating: 4.5,
-    poster: "https://image.tmdb.org/t/p/original/uDsyRkvq9sX7qt3SCDvGZ3MvGfs.jpg",
-    backdrop: "https://image.tmdb.org/t/p/original/fUls7K6pT65Jp9J6L6K6pT65Jp9.jpg",
-    releaseDate: "2024-04-05"
+    title: "Dune: Part Two",
+    description: "Paul Atreides unites with Chani and the Fremen while seeking revenge against the conspirators who destroyed his family, facing a choice between love and the fate of the universe.",
+    genre: "Sci-Fi / Adventure",
+    rating: 4.8,
+    duration: "2h 46m",
+    releaseDate: "2024-03-01",
+    isFeatured: true,
+    poster: "https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80",
+    backdrop: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1600&q=80",
+    trailerUrl: "https://www.youtube.com/embed/Way9Dexny3w?autoplay=1"
   },
   {
-    title: "Civil War",
-    description: "In a near-future dystopian America, a team of military-embedded journalists race against time to reach Washington, D.C., before rebel factions descend upon the White House.",
-    genre: "Action/Drama",
-    rating: 4.3,
-    poster: "https://image.tmdb.org/t/p/original/sh7RgPmcO979ZSTbbZ9A7SDBoff.jpg",
-    backdrop: "https://image.tmdb.org/t/p/original/vY5pE9GueS5v9J6L6K6pT65Jp9.jpg",
-    releaseDate: "2024-04-12"
-  },
-  {
-    title: "Challengers",
-    description: "Tashi, a former tennis prodigy turned coach, turned her husband into a world-famous champion. To jolt him out of his recent losing streak, she makes him play a 'Challenger' event against his former best friend and Tashi's former boyfriend.",
-    genre: "Drama/Romance",
+    title: "Deadpool & Wolverine",
+    description: "A listless Wade Wilson toils away in civilian life before an existential threat to his homeworld forces him to reluctantly suit up again alongside an even more reluctant Wolverine.",
+    genre: "Action / Comedy",
     rating: 4.7,
-    poster: "https://image.tmdb.org/t/p/original/8Y9Uoj9oH4vU8xN9eLqY6m6a6m6.jpg",
-    backdrop: "https://image.tmdb.org/t/p/original/zY5pE9GueS5v9J6L6K6pT65Jp9.jpg",
-    releaseDate: "2024-04-26"
+    duration: "2h 08m",
+    releaseDate: "2024-07-26",
+    isFeatured: false,
+    poster: "https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?auto=format&fit=crop&w=800&q=80",
+    backdrop: "https://images.unsplash.com/photo-1534809027769-b00d750a6bac?auto=format&fit=crop&w=1600&q=80",
+    trailerUrl: "https://www.youtube.com/embed/73_1biulkYk?autoplay=1"
   },
   {
-    title: "Abigail",
-    description: "After a group of criminals kidnap the ballerina daughter of a powerful underworld figure, they retreat to an isolated mansion, unaware that they're locked inside with a very real monster.",
-    genre: "Horror/Thriller",
-    rating: 4.2,
-    poster: "https://image.tmdb.org/t/p/original/799pS1J6L6K6pT65Jp9J6L6K6pT.jpg",
-    backdrop: "https://image.tmdb.org/t/p/original/xY5pE9GueS5v9J6L6K6pT65Jp9.jpg",
-    releaseDate: "2024-04-19"
+    title: "Oppenheimer",
+    description: "The biographical drama following J. Robert Oppenheimer's leadership of the Manhattan Project during World War II and its dramatic aftermath.",
+    genre: "Biography / Drama",
+    rating: 4.9,
+    duration: "3h 00m",
+    releaseDate: "2023-07-21",
+    isFeatured: false,
+    poster: "https://images.unsplash.com/photo-1440404653325-ab127d49abc1?auto=format&fit=crop&w=800&q=80",
+    backdrop: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1600&q=80",
+    trailerUrl: "https://www.youtube.com/embed/uYPbbksJxIg?autoplay=1"
+  },
+  {
+    title: "Spider-Man: Across the Spider-Verse",
+    description: "Miles Morales catapults across the Multiverse, joining forces with Gwen Stacy and a team of Spider-People to confront a powerful new villain.",
+    genre: "Animation / Action",
+    rating: 4.8,
+    duration: "2h 20m",
+    releaseDate: "2023-06-02",
+    isFeatured: false,
+    poster: "https://images.unsplash.com/photo-1635805737707-575885ab0820?auto=format&fit=crop&w=800&q=80",
+    backdrop: "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1600&q=80",
+    trailerUrl: "https://www.youtube.com/embed/cqGjhVJWtEg?autoplay=1"
+  },
+  {
+    title: "Interstellar",
+    description: "When Earth becomes uninhabitable, a team of ex-NASA pilots and researchers journey through a wormhole near Saturn in search of a new home for humanity.",
+    genre: "Sci-Fi / Drama",
+    rating: 4.9,
+    duration: "2h 49m",
+    releaseDate: "2014-11-07",
+    isFeatured: false,
+    poster: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80",
+    backdrop: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?auto=format&fit=crop&w=1600&q=80",
+    trailerUrl: "https://www.youtube.com/embed/zSWdZVtXT7E?autoplay=1"
+  },
+  {
+    title: "The Dark Knight",
+    description: "When the menace known as the Joker emerges, Batman must confront one of his greatest psychological tests while striving to preserve justice in Gotham.",
+    genre: "Action / Crime",
+    rating: 5.0,
+    duration: "2h 32m",
+    releaseDate: "2008-07-18",
+    isFeatured: false,
+    poster: "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80",
+    backdrop: "https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?auto=format&fit=crop&w=1600&q=80",
+    trailerUrl: "https://www.youtube.com/embed/EXeTwQWrcwY?autoplay=1"
   }
 ];
 
@@ -56,6 +92,7 @@ const MOCK_THEATERS = [
     name: "MoviGo Galaxy Cinema",
     location: "Downtown Mall, Sector 5",
     format: "IMAX / 4DX",
+    approvalStatus: "Approved",
     screens: [
       { number: 1, name: "Screen 1 - Grand IMAX", rows: 10, cols: 15, pricing: { "A": 500, "B": 500, "C": 450, "D": 450, "E": 400 } },
       { number: 2, name: "Screen 2 - Atmos Gold", rows: 8, cols: 12, pricing: { "A": 650, "B": 650, "C": 600 } }
@@ -66,16 +103,28 @@ const MOCK_THEATERS = [
     name: "Cineplex Platinum",
     location: "Heritage Square",
     format: "Standard / Dolby",
+    approvalStatus: "Approved",
     screens: [
       { number: 1, name: "Platinum Reel 1", rows: 12, cols: 12, pricing: { "A": 350, "B": 350, "C": 300 } }
     ]
   }
 ];
 
+const getFutureDates = (count = 7) => {
+  const dates = [];
+  const today = new Date();
+  for (let i = 0; i < count; i++) {
+    const d = new Date(today);
+    d.setDate(today.getDate() + i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
+};
+
 const seedData = async () => {
   try {
     console.log('Connecting to MongoDB...');
-    await mongoose.connect(MONGO_URI);
+    await connectDB();
     console.log('✅ Connected.');
 
     // 1. Clear Data
@@ -103,25 +152,30 @@ const seedData = async () => {
     console.log('✅ Users seeded.');
 
     // 3. Create Movies
-    console.log('Seeding current movies...');
-    const createdMovies = await Movie.insertMany(MOCK_MOVIES);
-    console.log('✅ Movies seeded.');
+    console.log('Seeding current movies with real metadata, images, and trailers...');
+    const createdMovies = await Movie.insertMany(REAL_MOVIES);
+    console.log(`✅ ${createdMovies.length} Movies seeded.`);
 
     // 4. Create Theaters
-    console.log('Seeding theaters...');
+    console.log('Seeding approved theaters...');
     const createdTheaters = await Theater.insertMany(MOCK_THEATERS);
-    console.log('✅ Theaters seeded.');
+    console.log(`✅ ${createdTheaters.length} Theaters seeded.`);
 
-    // 5. Create Showtimes
-    console.log('Seeding showtimes...');
+    // Link theater t1 to manager user
+    await User.findOneAndUpdate(
+      { email: 'manager@cinema.com' },
+      { $addToSet: { theaterIds: createdTheaters[0]._id } }
+    );
+
+    // 5. Create Showtimes with active dates
+    console.log('Seeding active showtimes (today + upcoming 7 days)...');
     const showtimes = [];
-    const dates = ['2024-04-20', '2024-04-21', '2024-04-22'];
+    const dates = getFutureDates(7);
     const times = ['11:00 AM', '02:30 PM', '06:00 PM', '09:30 PM'];
 
     createdMovies.forEach((movie, mIdx) => {
       dates.forEach((date, dIdx) => {
         times.forEach((time, tIdx) => {
-           // Alternate theaters and screens
            const theater = createdTheaters[mIdx % createdTheaters.length];
            showtimes.push({
              theater: theater._id,
@@ -137,7 +191,7 @@ const seedData = async () => {
     });
 
     await Showtime.insertMany(showtimes);
-    console.log('✅ Showtimes seeded.');
+    console.log(`✅ ${showtimes.length} Showtimes seeded.`);
 
     // 6. Create Promos
     console.log('Seeding promotions...');
@@ -154,7 +208,7 @@ const seedData = async () => {
     console.log('User Login: user@test.com / user123');
     console.log('-----------------------------------');
 
-    process.exit();
+    process.exit(0);
   } catch (error) {
     console.error('❌ SEEDING FAILED:', error);
     process.exit(1);

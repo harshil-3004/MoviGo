@@ -23,10 +23,8 @@ app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Database Connection
-console.log('Attempting to connect to MongoDB at:', process.env.MONGO_URI);
-mongoose.connect(process.env.MONGO_URI)
-.then(() => console.log('✅ MongoDB Connected Logically'))
-.catch(err => console.error('❌ MongoDB Connection Error:', err));
+const { connectDB } = require('./utils/db');
+connectDB();
 
 // Basic Health Check Route
 app.get('/api/health', (req, res) => {
@@ -137,3 +135,4 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server up and running on port ${PORT}`);
 });
+

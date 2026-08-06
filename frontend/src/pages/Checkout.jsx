@@ -45,18 +45,20 @@ const Checkout = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const activeMovieId = movieId || (showtime && (showtime.movie?._id || showtime.movie || showtime.movieId));
+
   useEffect(() => {
     window.scrollTo(0, 0);
     // If we just confirmed the booking, do not prematurely redirect.
     if (status === 'confirmed') return;
     
-    if (selectedSeats.length === 0 || !movieId) {
-      if (movieId) navigate(`/seat-selection/${movieId}`);
+    if (selectedSeats.length === 0 || !activeMovieId) {
+      if (activeMovieId) navigate(`/seat-selection/${activeMovieId}`);
       else navigate('/');
       return;
     }
     
-    getMovieDetails(movieId).then((data) => setMovie(data)).catch(err => console.error(err));
+    getMovieDetails(activeMovieId).then((data) => setMovie(data)).catch(err => console.error(err));
 
     // Warn before leaving (Browser level)
     const handleBeforeUnload = (e) => {
@@ -69,7 +71,7 @@ const Checkout = () => {
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [movieId, selectedSeats, navigate, status]);
+  }, [movieId, activeMovieId, selectedSeats, navigate, status]);
 
   // Timer Effect
   useEffect(() => {

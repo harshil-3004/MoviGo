@@ -4,7 +4,7 @@ import { useDispatch } from 'react-redux';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, MapPin, Info, Clock } from 'lucide-react';
 import { getMovieDetails } from '../services/movieService';
 import { getShowtimesByMovie } from '../services/showtimeService';
-import { setShowtime } from '../store/bookingSlice';
+import { setShowtime, startBooking } from '../store/bookingSlice';
 
 // Helper to format date to YYYY-MM-DD
 const formatDateToISO = (date) => {
@@ -121,6 +121,7 @@ const Theaters = () => {
   };
 
   const handleSelectTiming = (showtime) => {
+    dispatch(startBooking({ movieId: id }));
     dispatch(setShowtime({
       showtimeId: showtime._id,
       theater: showtime.theater.name,

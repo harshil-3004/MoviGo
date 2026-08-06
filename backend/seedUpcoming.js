@@ -1,5 +1,6 @@
-const mongoose = require('mongoose');
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
+const { connectDB } = require('./utils/db');
 const Movie = require('./models/Movie');
 
 const upcomingMoviesData = [
@@ -9,7 +10,8 @@ const upcomingMoviesData = [
     genre: 'Action / Comedy',
     poster: 'https://images.unsplash.com/photo-1626814026160-2237a95fc5a0?auto=format&fit=crop&w=800&q=80',
     backdrop: 'https://images.unsplash.com/photo-1534809027769-b00d750a6bac?auto=format&fit=crop&w=1600&q=80',
-    releaseDate: 'Jul 26, 2026',
+    trailerUrl: 'https://www.youtube.com/embed/73_1biulkYk?autoplay=1',
+    releaseDate: '2026-11-26',
     isUpcoming: true,
     rating: 0
   },
@@ -19,7 +21,8 @@ const upcomingMoviesData = [
     genre: 'Action / Drama',
     poster: 'https://images.unsplash.com/photo-1533613220915-609f661a6fe1?auto=format&fit=crop&w=800&q=80',
     backdrop: 'https://images.unsplash.com/photo-1461360370896-922624d12aa1?auto=format&fit=crop&w=1600&q=80',
-    releaseDate: 'Nov 22, 2026',
+    trailerUrl: 'https://www.youtube.com/embed/4rgYUipGJNo?autoplay=1',
+    releaseDate: '2026-11-22',
     isUpcoming: true,
     rating: 0
   },
@@ -29,7 +32,8 @@ const upcomingMoviesData = [
     genre: 'Sci-Fi / Adventure',
     poster: 'https://images.unsplash.com/photo-1618336753174-89b5dc6b4c19?auto=format&fit=crop&w=800&q=80',
     backdrop: 'https://images.unsplash.com/photo-1506443432602-ac2fcd6f54e0?auto=format&fit=crop&w=1600&q=80',
-    releaseDate: 'Dec 19, 2026',
+    trailerUrl: 'https://www.youtube.com/embed/Way9Dexny3w?autoplay=1',
+    releaseDate: '2026-12-19',
     isUpcoming: true,
     rating: 0
   },
@@ -39,14 +43,16 @@ const upcomingMoviesData = [
     genre: 'Animation / Drama',
     poster: 'https://images.unsplash.com/photo-1546182990-dffeafbe841d?auto=format&fit=crop&w=800&q=80',
     backdrop: 'https://images.unsplash.com/photo-1516426122078-c23e76319801?auto=format&fit=crop&w=1600&q=80',
-    releaseDate: 'Dec 20, 2026',
+    trailerUrl: 'https://www.youtube.com/embed/Way9Dexny3w?autoplay=1',
+    releaseDate: '2026-12-20',
     isUpcoming: true,
     rating: 0
   }
 ];
 
-mongoose.connect(process.env.MONGO_URI)
-  .then(async () => {
+const seedUpcoming = async () => {
+  try {
+    await connectDB();
     console.log('Connected to MongoDB. Purging existing upcoming movies...');
     await Movie.deleteMany({ isUpcoming: true });
     
@@ -54,9 +60,11 @@ mongoose.connect(process.env.MONGO_URI)
     await Movie.insertMany(upcomingMoviesData);
     
     console.log('Successfully seeded upcoming movies!');
-    process.exit();
-  })
-  .catch(err => {
+    process.exit(0);
+  } catch (err) {
     console.error('Connection Error:', err);
     process.exit(1);
-  });
+  }
+};
+
+seedUpcoming();

@@ -5,7 +5,7 @@ import { ChevronLeft, Info, ArrowRight, AlertCircle } from 'lucide-react';
 import SeatGrid from '../components/booking/SeatGrid';
 import { getMovieDetails } from '../services/movieService';
 import { getShowtimeById } from '../services/showtimeService';
-import { setShowtime, setPendingBookingId } from '../store/bookingSlice';
+import { setShowtime, setPendingBookingId, startBooking } from '../store/bookingSlice';
 import { createPendingBooking } from '../services/bookingService';
 import { fetchApi } from '../services/api';
 import Button from '../components/common/Button';

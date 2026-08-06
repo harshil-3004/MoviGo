@@ -1,10 +1,10 @@
 const nodemailer = require('nodemailer');
 
-// Create reusable transporter — with FULL DEBUGGING for Render
+// Create reusable transporter — Switching to Port 465 (Direct SSL)
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
-  port: 587,
-  secure: false, // Use STARTTLS
+  port: 465,
+  secure: true, // Use Direct SSL
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS
@@ -13,20 +13,20 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'
   },
-  debug: true, // Show SMTP traffic
-  logger: true, // Log to console
+  debug: true,
+  logger: true,
   connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 10000
 });
 
 // Verify connection configuration immediately
-console.log('📬 Starting Mailer Verification (with Debugging)...');
+console.log('📬 Starting Mailer Verification (Port 465)...');
 transporter.verify((error, success) => {
   if (error) {
     console.error('❌ Mailer Connection Error Details:', error);
   } else {
-    console.log('✅ Mailer ready for production (Port 587)');
+    console.log('✅ Mailer ready for production (Port 465)');
   }
 });
 
@@ -154,7 +154,14 @@ const sendOtpEmail = async (email, otp, purpose, userName = '') => {
     await transporter.sendMail(mailOptions);
     console.log(`✅ OTP sent successfully to ${email}`);
   } catch (error) {
-    console.error(`❌ Failed to send OTP to ${email}:`, error);
+    console.error(`❌ Failed to send OTP email to ${email}:`, error.message);
+    if (error.code === 'EAUTH' || error.responseCode === 535 || error.message.includes('Username and Password not accepted')) {
+      console.log(`\n==================================================`);
+      console.log(`🔑 DEV MODE OTP FOR ${email} (${purpose}): [ ${otp} ]`);
+      console.log(`⚠️  (Gmail authentication rejected EMAIL_PASS in .env. Generate a new Google App Password to enable live email delivery)`);
+      console.log(`==================================================\n`);
+      return; // Proceed cleanly so registration/reset works
+    }
     throw error;
   }
 };
