@@ -1,10 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { ChevronLeft, MapPin, Clock, Info, Calendar as CalendarIcon, Ticket } from 'lucide-react';
+import { ChevronLeft, MapPin, Calendar as CalendarIcon, Ticket, Star } from 'lucide-react';
 import { getShowtimesByTheater } from '../services/showtimeService';
+import { getTheaters } from '../services/theaterService';
 import { setShowtime, startBooking } from '../store/bookingSlice';
 import Button from '../components/common/Button';
+import BookingSteps from '../components/common/BookingSteps';
+import {
+  formatLocalDate,
+  getScreenForShowtime,
+  evaluateBookingWindow,
+} from '../utils/bookingUtils';
+
+const isActiveForDate = (show, selectedDate) => {
+  if (show.date !== selectedDate) return false;
+  if (show.time) {
+    return evaluateBookingWindow(show.date, show.time).canBook;
+  }
+  return true;
+};
+
+const getShowCapacity = (show) => {
+  const screen = getScreenForShowtime(show);
+  if (screen?.layout?.length > 0) {
+    let count = 0;
+    for (const row of screen.layout) {
+      for (const cell of row) {
+        if (cell.type !== 'aisle' && !cell.isReserved) count += 1;
+      }
+    }
+    return count || 120;
+  }
+  if (screen?.rows && screen?.cols) return screen.rows * screen.cols;
+  return 120;
+};
 
 const CinemaShowtimes = () => {
   const { theaterId } = useParams();
@@ -14,35 +44,41 @@ const CinemaShowtimes = () => {
   const [theater, setTheater] = useState(null);
   const [moviesWithShows, setMoviesWithShows] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(() => formatLocalDate(new Date()));
+  const dateInputRef = useRef(null);
 
   useEffect(() => {
     window.scrollTo(0, 0);
     const fetchData = async () => {
       try {
-        const data = await getShowtimesByTheater(theaterId);
-        
-        if (data.length > 0) {
-          setTheater(data[0].theater);
-          
-          // Group by movie
-          const grouped = {};
-          data.forEach(s => {
-            const movieId = s.movie._id;
-            if (!grouped[movieId]) {
-              grouped[movieId] = {
-                ...s.movie,
-                showtimes: []
-              };
-            }
-            grouped[movieId].showtimes.push(s);
-          });
-          
-          setMoviesWithShows(Object.values(grouped));
-        }
-        setIsLoading(false);
+        const [data, allTheaters] = await Promise.all([
+          getShowtimesByTheater(theaterId),
+          getTheaters(),
+        ]);
+
+        const shows = Array.isArray(data) ? data : [];
+        const matchedTheater =
+          shows.find((s) => s.theater)?.theater ||
+          (Array.isArray(allTheaters) ? allTheaters.find((t) => t._id === theaterId) : null);
+
+        setTheater(matchedTheater || null);
+
+        const grouped = {};
+        shows.forEach((s) => {
+          if (!s.movie) return;
+          const movieId = s.movie._id;
+          if (!grouped[movieId]) {
+            grouped[movieId] = {
+              ...s.movie,
+              showtimes: [],
+            };
+          }
+          grouped[movieId].showtimes.push(s);
+        });
+        setMoviesWithShows(Object.values(grouped));
       } catch (error) {
-        console.error("Error loading cinema shows:", error);
+        console.error('Error loading cinema shows:', error);
+      } finally {
         setIsLoading(false);
       }
     };
@@ -50,216 +86,304 @@ const CinemaShowtimes = () => {
   }, [theaterId]);
 
   const handleSelectTiming = (showtime) => {
-    // 1. Set Movie Context
     dispatch(startBooking({ movieId: showtime.movie._id }));
-    
-    // 2. Set Showtime Context
-    dispatch(setShowtime({
-      showtimeId: showtime._id,
-      theater: theater._id, // Store ID for validation
-      theaterName: theater.name, // Store Name for UI
-      date: showtime.date,
-      time: showtime.time,
-      id: showtime._id
-    }));
-    
+    dispatch(
+      setShowtime({
+        id: showtime._id,
+        showtimeId: showtime._id,
+        theater: theater._id,
+        theaterId: theater._id,
+        theaterName: theater.name,
+        date: showtime.date,
+        time: showtime.time,
+        screenNumber: showtime.screenNumber || 1,
+      })
+    );
     navigate(`/seat-selection/${showtime.movie._id}`);
   };
 
-  const generateDates = () => {
-    const dates = [];
+  const dates = useMemo(() => {
+    const list = [];
     const today = new Date();
     for (let i = 0; i < 7; i++) {
       const d = new Date();
       d.setDate(today.getDate() + i);
-      dates.push({
-        full: d.toISOString().split('T')[0],
-        day: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      list.push({
+        full: formatLocalDate(d),
+        day: i === 0 ? 'Today' : i === 1 ? 'Tmrw' : d.toLocaleDateString('en-US', { weekday: 'short' }),
         date: d.getDate(),
-        month: d.toLocaleDateString('en-US', { month: 'short' })
+        month: d.toLocaleDateString('en-US', { month: 'short' }),
       });
     }
-    return dates;
-  };
-
-  const availableDates = generateDates();
-
-  const dateInputRef = React.useRef(null);
+    return list;
+  }, []);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center pt-20">
-        <div className="w-12 h-12 rounded-full border-4 border-primary border-t-transparent animate-spin mb-4"></div>
-        <p className="text-muted font-outfit">Syncing Cinema Schedule...</p>
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-6">
+        <div className="h-8 w-40 rounded-lg animate-pulse" style={{ backgroundColor: 'var(--mg-surface-2)' }} />
+        <div className="h-28 rounded-xl animate-pulse" style={{ backgroundColor: 'var(--mg-surface)' }} />
+        <div className="h-44 rounded-xl animate-pulse" style={{ backgroundColor: 'var(--mg-surface)' }} />
       </div>
     );
   }
 
   if (!theater) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center pt-20 px-6">
-        <h2 className="text-3xl font-bold font-outfit mb-4">No data found for this cinema</h2>
-        <Button onClick={() => navigate('/cinemas')}>Back to All Cinemas</Button>
+      <div className="min-h-[65vh] flex flex-col items-center justify-center px-6 text-center">
+        <MapPin className="w-10 h-10 mb-3" style={{ color: 'var(--mg-ink-3)' }} />
+        <h2 className="text-2xl font-display font-bold mb-2" style={{ color: 'var(--mg-ink)' }}>
+          Cinema Not Found
+        </h2>
+        <p className="text-sm mb-6" style={{ color: 'var(--mg-ink-2)' }}>
+          This venue may have changed schedule or availability.
+        </p>
+        <Button onClick={() => navigate('/cinemas')}>All Cinemas</Button>
       </div>
     );
   }
 
-  return (
-    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-      {/* Header */}
-      <button onClick={() => navigate(-1)} className="inline-flex items-center text-muted hover:text-white transition-colors mb-8 group cursor-pointer">
-        <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center mr-3 group-hover:bg-primary transition-colors">
-          <ChevronLeft className="w-6 h-6" />
-        </div>
-        <span className="font-bold uppercase tracking-widest text-xs">Back</span>
-      </button>
+  const todayStr = formatLocalDate(new Date());
+  const isCustomDate = !dates.some((d) => d.full === selectedDate);
 
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-8 mb-12">
+  const activeMovies = moviesWithShows.filter((movie) =>
+    movie.showtimes.some((s) => isActiveForDate(s, selectedDate))
+  );
+
+  return (
+    <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-10 pb-24">
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+        <button
+          type="button"
+          onClick={() => navigate('/cinemas')}
+          className="inline-flex items-center gap-1.5 text-sm font-medium transition-colors cursor-pointer hover:opacity-80"
+          style={{ color: 'var(--mg-ink-2)' }}
+        >
+          <ChevronLeft className="w-4 h-4" />
+          All Cinemas
+        </button>
+        <BookingSteps currentStep={1} />
+      </div>
+
+      {/* Venue Header */}
+      <div
+        className="rounded-xl border p-6 sm:p-7 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4"
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          borderColor: 'var(--mg-border)',
+        }}
+      >
         <div>
-          <div className="flex items-center gap-4 mb-4">
-             <span className="bg-primary/20 text-primary border border-primary/30 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-               {theater.format}
-             </span>
-          </div>
-          <h1 className="text-4xl md:text-6xl font-bold font-outfit text-white mb-4">
+          <h1 className="text-2xl sm:text-4xl font-display font-bold tracking-tight" style={{ color: 'var(--mg-ink)' }}>
             {theater.name}
           </h1>
-          <div className="flex items-center text-muted gap-2">
-            <MapPin className="w-5 h-5 text-primary" />
-            <span className="text-lg">{theater.location}</span>
-          </div>
+          <p className="text-sm flex items-center gap-1.5 mt-2" style={{ color: 'var(--mg-ink-2)' }}>
+            <MapPin className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-accent)' }} />
+            <span>{theater.location}</span>
+          </p>
         </div>
 
-        {/* Global Date Selector */}
-        <div className="flex items-center gap-4">
-          <div className="flex gap-3 overflow-x-auto pb-2 hide-scrollbar">
-            {availableDates.map((dateObj) => (
-              <button
-                key={dateObj.full}
-                onClick={() => setSelectedDate(dateObj.full)}
-                className={`flex flex-col items-center min-w-[80px] p-4 rounded-2xl transition-all border ${
-                  selectedDate === dateObj.full
-                  ? 'bg-primary border-primary text-white shadow-lg shadow-primary/20 scale-105'
-                  : 'bg-surface/50 border-white/5 text-muted hover:border-white/20'
-                }`}
+        <div className="flex flex-wrap gap-2">
+          {String(theater.format || 'Standard 2D')
+            .split(',')
+            .map((fmt) => fmt.trim())
+            .filter(Boolean)
+            .map((fmt) => (
+              <span
+                key={fmt}
+                className="px-3 py-1 rounded-md text-xs font-semibold border"
+                style={{
+                  backgroundColor: 'var(--mg-surface-2)',
+                  borderColor: 'var(--mg-border)',
+                  color: 'var(--mg-ink-2)',
+                }}
               >
-                <span className="text-[10px] font-black uppercase tracking-tighter mb-1 opacity-60">{dateObj.day}</span>
-                <span className="text-xl font-black font-mono leading-none mb-1">{dateObj.date}</span>
-                <span className="text-[10px] font-bold uppercase tracking-widest opacity-60">{dateObj.month}</span>
-              </button>
+                {fmt}
+              </span>
             ))}
-          </div>
-          
-          <div className="relative group">
-            <input 
-              type="date" 
-              ref={dateInputRef}
-              className="absolute inset-0 opacity-0 pointer-events-none" 
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              min={new Date().toISOString().split('T')[0]}
-            />
-            <button 
-              onClick={() => dateInputRef.current.showPicker()}
-              className="p-5 bg-surface/50 border border-white/5 rounded-2xl text-muted group-hover:border-primary group-hover:text-primary transition-all flex flex-col items-center justify-center min-w-[80px]"
-            >
-               <CalendarIcon className="w-5 h-5 mb-1" />
-               <span className="text-[10px] font-black uppercase tracking-widest">More</span>
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Movies Grid */}
-      <div className="space-y-12">
-        {moviesWithShows.length === 0 ? (
-          <div className="text-center py-32 bg-surface/20 rounded-[2.5rem] border border-white/5">
-             <Ticket className="w-16 h-16 text-white/10 mx-auto mb-6" />
-             <h3 className="text-2xl font-bold text-white mb-2">No active shows found</h3>
-             <p className="text-muted max-w-sm mx-auto">This theater doesn't have any scheduled screenings at the moment.</p>
+      {/* Date Bar */}
+      <div
+        className="sticky top-16 z-30 rounded-xl border p-3 mb-8 flex items-center gap-2 overflow-x-auto hide-scrollbar backdrop-blur-md"
+        style={{
+          backgroundColor: 'var(--mg-nav-bg)',
+          borderColor: 'var(--mg-border)',
+        }}
+      >
+        {dates.map((d) => {
+          const isSelected = selectedDate === d.full;
+          return (
+            <button
+              key={d.full}
+              type="button"
+              onClick={() => setSelectedDate(d.full)}
+              className="flex flex-col items-center justify-center min-w-[76px] py-2 px-3 rounded-lg border transition-colors cursor-pointer shrink-0"
+              style={{
+                backgroundColor: isSelected ? 'var(--mg-accent)' : 'var(--mg-surface)',
+                borderColor: isSelected ? 'var(--mg-accent)' : 'var(--mg-border)',
+                color: isSelected ? '#ffffff' : 'var(--mg-ink)',
+              }}
+            >
+              <span
+                className="text-[10px] font-semibold uppercase"
+                style={{ opacity: isSelected ? 0.9 : 0.65 }}
+              >
+                {d.day}
+              </span>
+              <span className="text-sm font-bold">{d.date} {d.month}</span>
+            </button>
+          );
+        })}
+
+        <div className="relative flex-shrink-0">
+          <input
+            ref={dateInputRef}
+            type="date"
+            min={todayStr}
+            value={selectedDate}
+            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+            className="sr-only"
+            aria-label="Pick custom show date"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              if (dateInputRef.current?.showPicker) {
+                dateInputRef.current.showPicker();
+              } else {
+                dateInputRef.current?.click();
+              }
+            }}
+            className="flex flex-col items-center justify-center min-w-[84px] py-2 px-3 rounded-lg border transition-colors cursor-pointer"
+            style={{
+              backgroundColor: isCustomDate ? 'var(--mg-accent)' : 'var(--mg-surface)',
+              borderColor: isCustomDate ? 'var(--mg-accent)' : 'var(--mg-border)',
+              color: isCustomDate ? '#ffffff' : 'var(--mg-ink-2)',
+            }}
+          >
+            <CalendarIcon className="w-4 h-4 mb-0.5" />
+            <span className="text-[10px] font-bold uppercase">
+              {isCustomDate ? selectedDate.slice(5) : 'More Dates'}
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Movie Showtime Listings */}
+      <div className="space-y-4">
+        {activeMovies.length === 0 ? (
+          <div
+            className="text-center py-16 px-6 rounded-xl border border-dashed"
+            style={{
+              backgroundColor: 'var(--mg-surface)',
+              borderColor: 'var(--mg-border-strong)',
+            }}
+          >
+            <Ticket className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--mg-ink-3)' }} />
+            <h3 className="text-lg font-display font-bold mb-1" style={{ color: 'var(--mg-ink)' }}>
+              No Shows Scheduled
+            </h3>
+            <p className="text-sm" style={{ color: 'var(--mg-ink-2)' }}>
+              No remaining screenings are available on <strong style={{ color: 'var(--mg-ink)' }}>{selectedDate}</strong>.
+            </p>
           </div>
         ) : (
-          moviesWithShows.map(movie => (
-            <div key={movie._id} className="bg-surface/30 border border-white/5 rounded-[2.5rem] p-8 flex flex-col lg:flex-row gap-10 hover:bg-surface/50 transition-all border-glow group">
-              {/* Movie Poster & Basic Info */}
-              <div className="lg:w-1/4">
-                <div className="aspect-[2/3] rounded-2xl overflow-hidden mb-6 border border-white/10 shadow-2xl skew-x-1 group-hover:skew-x-0 transition-transform duration-700">
-                  <img src={movie.poster} alt={movie.title} className="w-full h-full object-cover" />
+          activeMovies.map((movie) => {
+            const activeShows = movie.showtimes.filter((s) =>
+              isActiveForDate(s, selectedDate)
+            );
+
+            return (
+              <div
+                key={movie._id}
+                className="rounded-xl border p-5 sm:p-6 flex flex-col md:flex-row gap-6 items-start"
+                style={{
+                  backgroundColor: 'var(--mg-surface)',
+                  borderColor: 'var(--mg-border)',
+                }}
+              >
+                {/* Movie Poster + Meta */}
+                <div className="flex gap-4 items-start w-full md:w-1/3 shrink-0">
+                  <Link
+                    to={`/movie/${movie._id}`}
+                    className="w-20 sm:w-24 aspect-[2/3] rounded-lg overflow-hidden shrink-0 border"
+                    style={{ borderColor: 'var(--mg-border)' }}
+                  >
+                    <img
+                      src={movie.poster}
+                      alt={movie.title}
+                      className="w-full h-full object-cover"
+                    />
+                  </Link>
+                  <div className="min-w-0">
+                    <Link
+                      to={`/movie/${movie._id}`}
+                      className="text-lg font-display font-bold leading-snug hover:underline block"
+                      style={{ color: 'var(--mg-ink)' }}
+                    >
+                      {movie.title}
+                    </Link>
+                    <div className="flex flex-wrap items-center gap-2 mt-1.5 text-xs" style={{ color: 'var(--mg-ink-2)' }}>
+                      {movie.genre && (
+                        <span
+                          className="px-2 py-0.5 rounded font-medium"
+                          style={{ backgroundColor: 'var(--mg-surface-2)' }}
+                        >
+                          {movie.genre}
+                        </span>
+                      )}
+                      {movie.duration && <span>{movie.duration}</span>}
+                    </div>
+                    {movie.rating && (
+                      <div className="flex items-center gap-1 mt-2 text-xs font-semibold" style={{ color: 'var(--mg-gold)' }}>
+                        <Star className="w-3.5 h-3.5 fill-current" />
+                        <span>{movie.rating} / 10</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <h3 className="text-2xl font-bold font-outfit text-white mb-2">{movie.title}</h3>
-                <p className="text-sm text-muted mb-4">{movie.genre} • {movie.duration}</p>
-              </div>
 
-              {/* Showtimes */}
-              <div className="lg:w-3/4">
-                 <div className="flex items-center gap-2 mb-6 text-primary font-black text-xs uppercase tracking-widest">
-                    <Clock className="w-4 h-4" /> Available Screenings
-                 </div>
-
-                 <div className="flex flex-wrap gap-4">
-                    {movie.showtimes.filter(s => {
-                      if (s.date !== selectedDate) return false;
-                      // For today, hide shows whose time has already passed
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      if (s.date === todayStr && s.time) {
-                        const now = new Date();
-                        const nowMinutes = now.getHours() * 60 + now.getMinutes();
-                        let showMinutes = 0;
-                        if (/AM|PM/i.test(s.time)) {
-                          const [time, period] = s.time.split(' ');
-                          let [h, m] = time.split(':').map(Number);
-                          if (period.toUpperCase() === 'PM' && h !== 12) h += 12;
-                          if (period.toUpperCase() === 'AM' && h === 12) h = 0;
-                          showMinutes = h * 60 + (m || 0);
-                        } else {
-                          const [h, m] = s.time.split(':').map(Number);
-                          showMinutes = h * 60 + (m || 0);
-                        }
-                        if (nowMinutes > showMinutes) return false;
-                      }
-                      return true;
-                    }).map(show => (
+                {/* Timings */}
+                <div className="w-full md:w-2/3 flex flex-wrap gap-3 pt-1">
+                  {activeShows.map((show) => {
+                    const capacity = getShowCapacity(show);
+                    const isFull = Array.isArray(show.bookedSeats) && show.bookedSeats.length >= capacity;
+                    return (
                       <button
                         key={show._id}
-                        onClick={() => handleSelectTiming(show)}
-                        className="px-8 py-4 bg-white/5 border border-white/10 hover:border-primary hover:bg-primary/10 rounded-2xl text-white transition-all group/time relative overflow-hidden flex flex-col items-center min-w-[120px]"
+                        type="button"
+                        disabled={isFull}
+                        onClick={() => !isFull && handleSelectTiming(show)}
+                        className="px-4 py-2.5 rounded-lg border text-left transition-all cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed hover:-translate-y-0.5"
+                        style={{
+                          backgroundColor: isFull ? 'var(--mg-surface-2)' : 'var(--mg-bg)',
+                          borderColor: isFull ? 'var(--mg-border)' : 'var(--mg-border-strong)',
+                        }}
                       >
-                         <span className="text-xl font-bold text-green-400 group-hover/time:text-primary transition-colors">{show.time}</span>
-                         <span className="text-[10px] font-black uppercase opacity-40 mt-1 tracking-widest">{theater.format}</span>
-                         <div className="absolute inset-0 bg-primary/5 opacity-0 group-hover/time:opacity-100 transition-opacity"></div>
+                        <span
+                          className={`block text-sm font-mono font-bold ${isFull ? 'line-through' : ''}`}
+                          style={{ color: isFull ? 'var(--mg-ink-3)' : 'var(--mg-success)' }}
+                        >
+                          {show.time}
+                        </span>
+                        <span className="block text-[11px] mt-0.5" style={{ color: 'var(--mg-ink-3)' }}>
+                          Screen {show.screenNumber || 1}
+                          {isFull ? ' • Full' : ''}
+                        </span>
+                        {!isFull && evaluateBookingWindow(show.date, show.time).hasStarted && (
+                          <span className="block text-[10px] font-semibold mt-0.5" style={{ color: 'var(--mg-warning)' }}>
+                            Closes {evaluateBookingWindow(show.date, show.time).cutoffFormatted}
+                          </span>
+                        )}
                       </button>
-                    ))}
-                 </div>
-
-                 {(() => {
-                    const todayStr = new Date().toISOString().split('T')[0];
-                    const activeShows = movie.showtimes.filter(s => {
-                      if (s.date !== selectedDate) return false;
-                      if (s.date === todayStr && s.time) {
-                        const now = new Date();
-                        const nowMin = now.getHours() * 60 + now.getMinutes();
-                        let sMin = 0;
-                        if (/AM|PM/i.test(s.time)) {
-                          const [t, p] = s.time.split(' ');
-                          let [h, m] = t.split(':').map(Number);
-                          if (p.toUpperCase() === 'PM' && h !== 12) h += 12;
-                          if (p.toUpperCase() === 'AM' && h === 12) h = 0;
-                          sMin = h * 60 + (m || 0);
-                        } else {
-                          const [h, m] = s.time.split(':').map(Number);
-                          sMin = h * 60 + (m || 0);
-                        }
-                        if (nowMin > sMin) return false;
-                      }
-                      return true;
-                    });
-                    return activeShows.length === 0 ? (
-                      <p className="text-muted italic">No active screenings for the selected date.</p>
-                    ) : null;
-                  })()}
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

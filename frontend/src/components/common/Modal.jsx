@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const Modal = ({ isOpen, onClose, title, children, className = '' }) => {
-  
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key === 'Escape') onClose();
@@ -21,35 +20,44 @@ const Modal = ({ isOpen, onClose, title, children, className = '' }) => {
   if (!isOpen) return null;
 
   const modalContent = (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto overflow-x-hidden">
-      {/* Backdrop with enhanced blur */}
-      <div 
-        className="fixed inset-0 bg-black/80 backdrop-blur-md transition-opacity duration-500 animate-in fade-in"
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
+      <div
+        className="fixed inset-0 backdrop-blur-sm transition-opacity"
+        style={{ backgroundColor: 'var(--mg-overlay)' }}
         onClick={onClose}
       />
-      
-      {/* Modal Dialog with glassmorphic style */}
-      <div 
-        className={`relative w-full bg-base/95 border border-white/10 rounded-[2.5rem] shadow-[0_30px_100px_rgba(0,0,0,0.8)] overflow-hidden transform transition-all animate-in zoom-in-95 fade-in duration-300 ${className || 'max-w-lg'}`}
+
+      <div
+        className={`relative w-full rounded-2xl overflow-hidden ${className || 'max-w-lg'}`}
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          border: '1px solid var(--mg-border-strong)',
+          boxShadow: 'var(--mg-shadow-lg)',
+          color: 'var(--mg-ink)',
+        }}
         role="dialog"
+        aria-modal="true"
       >
-        {/* Decorative background glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
-        
-        <div className="flex justify-between items-center px-8 py-6 border-b border-white/5 bg-white/[0.02]">
-          <h3 className="text-sm font-black font-outfit text-white uppercase tracking-[0.25em]">{title}</h3>
-          <button 
+        <div
+          className="flex justify-between items-center px-6 py-4 border-b"
+          style={{ borderColor: 'var(--mg-border)' }}
+        >
+          <h3 className="text-base font-bold font-display tracking-tight" style={{ color: 'var(--mg-ink)' }}>
+            {title}
+          </h3>
+          <button
+            type="button"
             onClick={onClose}
-            className="text-muted hover:text-white transition-all p-2 rounded-full hover:bg-white/10 cursor-pointer group"
+            aria-label="Close modal"
+            className="p-1.5 rounded-lg transition-colors cursor-pointer mg-hover"
+            style={{ color: 'var(--mg-ink-2)' }}
           >
-            <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
+            <X className="w-5 h-5" />
           </button>
         </div>
-        
-        <div className="max-h-[75vh] overflow-y-auto custom-scrollbar">
-          <div className="p-8">
-            {children}
-          </div>
+
+        <div className="max-h-[78vh] overflow-y-auto custom-scrollbar">
+          <div className="p-6">{children}</div>
         </div>
       </div>
     </div>
@@ -59,4 +67,3 @@ const Modal = ({ isOpen, onClose, title, children, className = '' }) => {
 };
 
 export default Modal;
-

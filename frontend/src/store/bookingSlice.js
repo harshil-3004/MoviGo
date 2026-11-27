@@ -23,7 +23,6 @@ const bookingSlice = createSlice({
       state.movieId = action.payload.movieId;
     },
     setShowtime: (state, action) => {
-      const isSameShowtime = state.showtime?.showtimeId === action.payload.showtimeId;
       state.showtime = action.payload;
       // Always clear seats, pending booking, and coupon when starting a new selection
       state.selectedSeats = [];

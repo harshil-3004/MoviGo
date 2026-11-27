@@ -10,9 +10,14 @@ let socket = null;
 export const getSocket = () => {
   if (!socket || socket.disconnected) {
     const socketUrl = import.meta.env.VITE_API_URL
-      ? import.meta.env.VITE_API_URL.replace('/api', '')
-      : 'http://localhost:5000';
-    socket = io(socketUrl, { autoConnect: true });
+      ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '')
+      : window.location.origin;
+    socket = io(socketUrl, {
+      autoConnect: true,
+      auth: (cb) => {
+        cb({ token: localStorage.getItem('token') });
+      },
+    });
   }
   return socket;
 };

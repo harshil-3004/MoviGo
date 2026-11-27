@@ -1,35 +1,59 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { Plus, Search, Tag, Percent, Edit2, Trash2, CalendarDays, Activity, History, Clock, CheckCircle, Film, MapPin, User as UserIcon } from 'lucide-react';
+import {
+  Plus,
+  Search,
+  Tag,
+  Percent,
+  Edit2,
+  Trash2,
+  History,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  X,
+} from 'lucide-react';
 import Button from '../../components/common/Button';
 import Modal from '../../components/common/Modal';
 import { fetchApi } from '../../services/api';
+import { formatLocalDate } from '../../utils/bookingUtils';
 
 const AdminPromotions = () => {
+  const { user } = useSelector((state) => state.auth);
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'master_admin';
+
   const [searchTerm, setSearchTerm] = useState('');
   const [promotions, setPromotions] = useState([]);
   const [usageHistory, setUsageHistory] = useState([]);
+  const [theaters, setTheaters] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isMintOpen, setIsMintOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('codes'); // 'codes' | 'history'
-  
-  // Form state
-  const [newPromo, setNewPromo] = useState({ code: '', type: 'percentage', value: '', limit: 100, expiry: '', isUnlimited: false, scope: 'global', theaterIds: [] });
+  const [activeTab, setActiveTab] = useState('codes');
   const [currentPromo, setCurrentPromo] = useState(null);
-  const [theaters, setTheaters] = useState([]);
-  const { user } = useSelector(state => state.auth);
+  const [feedback, setFeedback] = useState(null);
+
+  const [newPromo, setNewPromo] = useState({
+    code: '',
+    type: 'percentage',
+    value: '',
+    limit: 100,
+    expiry: '',
+    isUnlimited: false,
+    scope: 'global',
+    theaterIds: [],
+  });
 
   const fetchPromotions = async () => {
     try {
       const [promoData, theaterData] = await Promise.all([
         fetchApi('/promotions'),
-        fetchApi('/theaters/admin')
+        fetchApi('/theaters/admin'),
       ]);
-      setPromotions(promoData);
-      setTheaters(theaterData);
+      setPromotions(Array.isArray(promoData) ? promoData : []);
+      setTheaters(Array.isArray(theaterData) ? theaterData : []);
     } catch (err) {
-      console.error("Error fetching promotions/theaters:", err);
+      console.error('Error fetching promotions/theaters:', err);
     } finally {
       setIsLoading(false);
     }
@@ -39,9 +63,9 @@ const AdminPromotions = () => {
     setHistoryLoading(true);
     try {
       const data = await fetchApi('/promotions/usage-history');
-      setUsageHistory(data);
+      setUsageHistory(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error fetching usage history:", err);
+      console.error('Error fetching usage history:', err);
     } finally {
       setHistoryLoading(false);
     }
@@ -56,12 +80,13 @@ const AdminPromotions = () => {
   }, [activeTab]);
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Are you sure you want to revoke this code?")) return;
+    if (!window.confirm('Revoke this promo code permanently?')) return;
     try {
       await fetchApi(`/promotions/${id}`, { method: 'DELETE' });
       fetchPromotions();
+      setFeedback({ type: 'success', text: 'Promo code deleted.' });
     } catch (e) {
-      alert("Failed to delete promo.");
+      setFeedback({ type: 'error', text: e.message || 'Failed to delete promo.' });
     }
   };
 
@@ -76,7 +101,9 @@ const AdminPromotions = () => {
         expiry: promo.expiry,
         isUnlimited: promo.isUnlimited || false,
         scope: promo.scope || 'global',
-        theaterIds: promo.theaterIds || []
+        theaterIds: (promo.theaterIds || []).map((tid) =>
+          typeof tid === 'object' ? tid._id : tid
+        ),
       });
     } else {
       setCurrentPromo(null);
@@ -87,8 +114,8 @@ const AdminPromotions = () => {
         limit: 100,
         expiry: '',
         isUnlimited: false,
-        scope: user?.role === 'admin' ? 'global' : 'local',
-        theaterIds: user?.role === 'theater_admin' ? (user.theaterIds || []) : []
+        scope: isSuperAdmin ? 'global' : 'local',
+        theaterIds: !isSuperAdmin ? user?.theaterIds || [] : [],
       });
     }
     setIsMintOpen(true);
@@ -96,217 +123,326 @@ const AdminPromotions = () => {
 
   const handleMint = async (e) => {
     e.preventDefault();
+    setFeedback(null);
     if (newPromo.scope === 'local' && (!newPromo.theaterIds || newPromo.theaterIds.length === 0)) {
-       alert("Please select at least one cinema for this local promotion.");
-       return;
+      setFeedback({ type: 'error', text: 'Select at least one cinema for a local promotion.' });
+      return;
     }
 
     try {
       const payload = {
         ...newPromo,
-        theaterIds: newPromo.scope === 'global' ? [] : newPromo.theaterIds
+        theaterIds: newPromo.scope === 'global' ? [] : newPromo.theaterIds,
       };
 
       if (currentPromo) {
         await fetchApi(`/promotions/${currentPromo._id}`, {
           method: 'PUT',
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
+        setFeedback({ type: 'success', text: `Updated promo code ${newPromo.code}.` });
       } else {
         await fetchApi('/promotions', {
           method: 'POST',
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
         });
+        setFeedback({ type: 'success', text: `Created promo code ${newPromo.code}.` });
       }
       setIsMintOpen(false);
       fetchPromotions();
     } catch (e) {
-      alert("Failed saving promo");
+      setFeedback({ type: 'error', text: e.message || 'Failed saving promo code' });
     }
   };
 
   const toggleTheater = (id) => {
-    setNewPromo(prev => {
-       const exists = prev.theaterIds.includes(id);
-       if (exists) return { ...prev, theaterIds: prev.theaterIds.filter(tid => tid !== id) };
-       return { ...prev, theaterIds: [...prev.theaterIds, id] };
+    setNewPromo((prev) => {
+      const exists = prev.theaterIds.includes(id);
+      if (exists) {
+        return { ...prev, theaterIds: prev.theaterIds.filter((tid) => tid !== id) };
+      }
+      return { ...prev, theaterIds: [...prev.theaterIds, id] };
     });
   };
 
-  // RBAC Filtering Logic
-  const filteredPromotions = promotions.filter(p => {
-    if (user?.role === 'admin' || user?.email === 'harshil@movigo.com') return true;
-    if (p.scope === 'global') return true; 
-    const authorizedIds = theaters.map(t => t._id.toString());
-    return (p.theaterIds || []).some(id => authorizedIds.includes(id.toString()));
+  const filteredPromotions = promotions.filter((p) => {
+    if (isSuperAdmin || user?.email === 'harshil@movigo.com') return true;
+    if (p.scope === 'global') return true;
+    const authorizedIds = theaters.map((t) => t._id.toString());
+    return (p.theaterIds || []).some((id) => authorizedIds.includes(id.toString()));
   });
 
-  // Split into active and expired
-  const today = new Date().toISOString().split('T')[0];
-  const searchFiltered = filteredPromotions.filter(p => p.code.toLowerCase().includes(searchTerm.toLowerCase()));
-  const activePromos = searchFiltered.filter(p => p.expiry >= today);
-  const expiredPromos = searchFiltered.filter(p => p.expiry < today);
+  const today = formatLocalDate(new Date());
+  const searchFiltered = filteredPromotions.filter((p) =>
+    (p.code || '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+  const activePromos = searchFiltered.filter((p) => p.expiry >= today);
+  const expiredPromos = searchFiltered.filter((p) => p.expiry < today);
 
-  // Render a promo table row
-  const renderPromoRow = (promo, isExpired = false) => (
-    <tr key={promo._id} className={`hover:bg-white/[0.02] transition-colors group ${isExpired ? 'opacity-50' : ''}`}>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded flex items-center justify-center ${isExpired ? 'bg-white/5 border border-white/10 text-white/30' : 'bg-primary/10 border border-primary/20 text-primary'}`}>
-            <Tag className="w-4 h-4" />
-          </div>
-          <span className="font-mono font-bold tracking-wider text-white bg-white/5 px-2 py-1 rounded inline-block">
-            {promo.code}
-          </span>
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex flex-col gap-1">
-          <span className={`w-fit px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${
-            promo.scope === 'global' ? 'bg-secondary/20 text-secondary border border-secondary/30' : 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
-          }`}>
-            {promo.scope}
-          </span>
-          {promo.scope === 'local' && (
-             <span className="text-[10px] text-muted">Applied to {promo.theaterIds?.length || 0} branches</span>
-          )}
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-1 font-bold text-white/90">
-          {promo.type === 'percentage' ? (
-            <><Percent className="w-3.5 h-3.5 text-primary" /> {promo.value}% OFF</>
-          ) : (
-            <><span className="text-green-400">₹</span>{promo.value.toFixed(2)} OFF</>
-          )}
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <div className="w-32">
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-white/60">{promo.used} used</span>
-            <span className="text-muted">{promo.isUnlimited ? 'Unlimited' : `${promo.limit} max`}</span>
-          </div>
-          <div className="w-full bg-white/5 rounded-full h-1.5 border border-white/5 overflow-hidden">
-            <div 
-              className={`h-1.5 rounded-full ${(!promo.isUnlimited && promo.used >= promo.limit) ? 'bg-red-500' : isExpired ? 'bg-white/20' : 'bg-primary'}`} 
-              style={{ width: `${promo.isUnlimited ? 0 : Math.min((promo.used / promo.limit) * 100, 100)}%` }}
-            ></div>
-          </div>
-        </div>
-      </td>
-      <td className="px-6 py-4">
-        <span className={`flex items-center gap-1.5 ${isExpired ? 'text-red-400' : 'text-white/70'}`}>
-          <CalendarDays className="w-4 h-4 text-muted" /> {promo.expiry}
-          {isExpired && <span className="text-[9px] font-black uppercase bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded ml-1">Expired</span>}
-        </span>
-      </td>
-      <td className="px-6 py-4 text-right">
-        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => handleOpenModal(promo)} className="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/60 hover:text-white transition-colors cursor-pointer" title="Edit Properties">
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button onClick={() => handleDelete(promo._id)} className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400 hover:text-red-300 transition-colors cursor-pointer" title="Revoke Code">
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      </td>
-    </tr>
+  const renderPromoTable = (list, isExpired = false) => (
+    <div
+      className="rounded-xl border overflow-hidden"
+      style={{
+        backgroundColor: 'var(--mg-surface)',
+        borderColor: 'var(--mg-border)',
+        opacity: isExpired ? 0.72 : 1,
+      }}
+    >
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr
+              className="border-b text-xs font-semibold uppercase tracking-wider"
+              style={{ borderColor: 'var(--mg-border)', color: 'var(--mg-ink-3)' }}
+            >
+              <th className="py-3.5 px-5">Code</th>
+              <th className="py-3.5 px-4">Scope</th>
+              <th className="py-3.5 px-4">Discount</th>
+              <th className="py-3.5 px-4">Usage</th>
+              <th className="py-3.5 px-4">Expires</th>
+              <th className="py-3.5 px-5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y" style={{ borderColor: 'var(--mg-border)' }}>
+            {list.map((promo) => {
+              const pct = !promo.isUnlimited && promo.limit > 0
+                ? Math.min(100, Math.round((promo.used / promo.limit) * 100))
+                : 0;
+              const isDepleted = !promo.isUnlimited && promo.used >= promo.limit;
+              const canEdit = isSuperAdmin || promo.scope === 'local';
+
+              return (
+                <tr key={promo._id}>
+                  <td className="py-3.5 px-5">
+                    <span
+                      className="inline-flex items-center gap-1.5 font-mono font-bold px-2.5 py-1 rounded border text-xs"
+                      style={{
+                        backgroundColor: 'var(--mg-surface-2)',
+                        borderColor: 'var(--mg-border)',
+                        color: isExpired ? 'var(--mg-ink-3)' : 'var(--mg-accent)',
+                      }}
+                    >
+                      <Tag className="w-3.5 h-3.5" />
+                      {promo.code}
+                    </span>
+                  </td>
+
+                  <td className="py-3.5 px-4 text-xs">
+                    <span
+                      className="inline-block px-2 py-0.5 rounded font-semibold uppercase text-[11px]"
+                      style={{
+                        backgroundColor: promo.scope === 'global' ? 'var(--mg-gold-soft)' : 'var(--mg-surface-2)',
+                        color: promo.scope === 'global' ? 'var(--mg-gold)' : 'var(--mg-ink)',
+                      }}
+                    >
+                      {promo.scope}
+                    </span>
+                    {promo.scope === 'local' && (
+                      <p className="text-[11px] mt-0.5" style={{ color: 'var(--mg-ink-3)' }}>
+                        {promo.theaterIds?.length || 0} cinema(s)
+                      </p>
+                    )}
+                  </td>
+
+                  <td className="py-3.5 px-4 font-mono font-bold text-xs" style={{ color: 'var(--mg-ink)' }}>
+                    {promo.type === 'percentage' ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Percent className="w-3.5 h-3.5" style={{ color: 'var(--mg-accent)' }} />
+                        {promo.value}% OFF
+                      </span>
+                    ) : (
+                      <span style={{ color: 'var(--mg-success)' }}>
+                        ₹{Number(promo.value || 0).toFixed(2)} OFF
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="py-3.5 px-4">
+                    <div className="w-32">
+                      <div className="flex justify-between text-[11px] mb-1" style={{ color: 'var(--mg-ink-2)' }}>
+                        <span>{promo.used} used</span>
+                        <span>{promo.isUnlimited ? 'Unlimited' : `${promo.limit} max`}</span>
+                      </div>
+                      {!promo.isUnlimited && (
+                        <div className="w-full h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--mg-surface-2)' }}>
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${pct}%`,
+                              backgroundColor: isDepleted ? 'var(--mg-danger)' : 'var(--mg-accent)',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="py-3.5 px-4 font-mono text-xs" style={{ color: 'var(--mg-ink-2)' }}>
+                    {promo.expiry}
+                  </td>
+
+                  <td className="py-3.5 px-5 text-right">
+                    {canEdit && (
+                      <div className="inline-flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenModal(promo)}
+                          title="Edit Promo"
+                          className="p-2 rounded-lg border cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--mg-surface-2)',
+                            borderColor: 'var(--mg-border)',
+                            color: 'var(--mg-ink-2)',
+                          }}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(promo._id)}
+                          title="Delete Promo"
+                          className="p-2 rounded-lg border cursor-pointer"
+                          style={{
+                            backgroundColor: 'var(--mg-danger-soft)',
+                            borderColor: 'var(--mg-border)',
+                            color: 'var(--mg-danger)',
+                          }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 
   return (
-    <div className="p-6 md:p-10 w-full animate-in fade-in duration-500">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold font-outfit text-white mb-2">Vouchers & Promocodes</h1>
-          <p className="text-muted">
-            {user?.role === 'admin' 
-              ? 'Manage global discounting events and track voucher redemptions.'
-              : `Manage restricted local vouchers for your authorized theater branches.`}
+          <h1 className="text-2xl sm:text-3xl font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+            Promotions &amp; Offers
+          </h1>
+          <p className="text-sm mt-0.5" style={{ color: 'var(--mg-ink-2)' }}>
+            Create platform-wide or cinema-specific discount vouchers and inspect redemption logs.
           </p>
         </div>
         {activeTab === 'codes' && (
-          <Button onClick={() => handleOpenModal()} className="flex items-center shadow-[0_0_20px_rgba(244,63,94,0.3)]">
-            <Plus className="w-5 h-5 mr-2" /> Mint New Code
+          <Button onClick={() => handleOpenModal()}>
+            <Plus className="w-4 h-4" />
+            Create Promo Code
           </Button>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-8 bg-surface/30 border border-white/5 rounded-2xl p-2 w-fit">
-        <button
-          onClick={() => setActiveTab('codes')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-widest transition-all ${activeTab === 'codes' ? 'bg-primary text-white shadow-[0_10px_20px_rgba(244,63,94,0.3)]' : 'text-muted hover:text-white'}`}
+      {feedback && (
+        <div
+          className="px-4 py-3 rounded-xl border text-sm font-medium flex items-center justify-between gap-3"
+          style={{
+            backgroundColor: feedback.type === 'success' ? 'var(--mg-success-soft)' : 'var(--mg-danger-soft)',
+            borderColor: feedback.type === 'success' ? 'var(--mg-success)' : 'var(--mg-danger)',
+            color: feedback.type === 'success' ? 'var(--mg-success)' : 'var(--mg-danger)',
+          }}
         >
-          <Tag className="w-4 h-4" /> Promo Codes
+          <span className="flex items-center gap-2">
+            {feedback.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+            {feedback.text}
+          </span>
+          <button type="button" onClick={() => setFeedback(null)} className="cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div
+        className="inline-flex p-1 rounded-xl border gap-1"
+        style={{ backgroundColor: 'var(--mg-surface)', borderColor: 'var(--mg-border)' }}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab('codes')}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+          style={{
+            backgroundColor: activeTab === 'codes' ? 'var(--mg-accent)' : 'transparent',
+            color: activeTab === 'codes' ? '#ffffff' : 'var(--mg-ink-2)',
+          }}
+        >
+          <Tag className="w-3.5 h-3.5" />
+          Promo Codes
         </button>
         <button
+          type="button"
           onClick={() => setActiveTab('history')}
-          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-secondary text-white shadow-[0_10px_20px_rgba(139,92,246,0.3)]' : 'text-muted hover:text-white'}`}
+          className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+          style={{
+            backgroundColor: activeTab === 'history' ? 'var(--mg-accent)' : 'transparent',
+            color: activeTab === 'history' ? '#ffffff' : 'var(--mg-ink-2)',
+          }}
         >
-          <History className="w-4 h-4" /> Usage History
+          <History className="w-3.5 h-3.5" />
+          Usage History
         </button>
       </div>
 
-      {/* ── USAGE HISTORY TAB ── */}
-      {activeTab === 'history' && (
-        <div className="bg-surface/30 border border-white/5 rounded-[2.5rem] overflow-hidden">
+      {activeTab === 'history' ? (
+        <div
+          className="rounded-xl border overflow-hidden"
+          style={{ backgroundColor: 'var(--mg-surface)', borderColor: 'var(--mg-border)' }}
+        >
           {historyLoading ? (
-            <div className="py-20 text-center">
-              <div className="w-12 h-12 rounded-full border-4 border-secondary border-t-transparent animate-spin mx-auto mb-4"></div>
-              <p className="text-muted uppercase tracking-widest text-xs font-bold">Loading History...</p>
+            <div className="py-16 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-7 h-7 animate-spin" style={{ color: 'var(--mg-accent)' }} />
+              <p className="text-sm" style={{ color: 'var(--mg-ink-2)' }}>Loading usage history...</p>
             </div>
           ) : usageHistory.length === 0 ? (
-            <div className="py-20 text-center border border-dashed border-white/10 rounded-3xl m-8">
-              <History className="w-16 h-16 text-white/10 mx-auto mb-4" />
-              <p className="text-muted italic">No promo code usage recorded yet.</p>
+            <div className="py-16 text-center" style={{ color: 'var(--mg-ink-3)' }}>
+              No promo code redemptions recorded yet.
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-left border-collapse text-sm">
                 <thead>
-                  <tr className="text-muted/40 uppercase text-[10px] font-black tracking-[0.2em] border-b border-white/5">
-                    <th className="px-6 py-5 text-left">Promo Code</th>
-                    <th className="px-6 py-5 text-left">Customer</th>
-                    <th className="px-6 py-5 text-left">Movie</th>
-                    <th className="px-6 py-5 text-left">Theater</th>
-                    <th className="px-6 py-5 text-left">Amount</th>
-                    <th className="px-6 py-5 text-left">Used On</th>
+                  <tr
+                    className="border-b text-xs font-semibold uppercase tracking-wider"
+                    style={{ borderColor: 'var(--mg-border)', color: 'var(--mg-ink-3)' }}
+                  >
+                    <th className="py-3.5 px-5">Code</th>
+                    <th className="py-3.5 px-4">Customer</th>
+                    <th className="py-3.5 px-4">Movie</th>
+                    <th className="py-3.5 px-4">Cinema</th>
+                    <th className="py-3.5 px-4">Total Paid</th>
+                    <th className="py-3.5 px-5">Used On</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
-                  {usageHistory.map(booking => (
-                    <tr key={booking._id} className="hover:bg-white/[0.02] transition-colors">
-                      <td className="px-6 py-4">
-                        <span className="font-mono text-primary font-bold text-sm bg-primary/10 px-2 py-1 rounded">{booking.promoCode}</span>
+                <tbody className="divide-y" style={{ borderColor: 'var(--mg-border)' }}>
+                  {usageHistory.map((booking) => (
+                    <tr key={booking._id}>
+                      <td className="py-3.5 px-5 font-mono text-xs font-bold" style={{ color: 'var(--mg-accent)' }}>
+                        {booking.promoCode}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-7 h-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
-                            <UserIcon className="w-3.5 h-3.5 text-white/40" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-white text-xs">{booking.user?.name}</div>
-                            <div className="text-[10px] text-muted">{booking.user?.email}</div>
-                          </div>
-                        </div>
+                      <td className="py-3.5 px-4">
+                        <p className="font-semibold text-xs sm:text-sm" style={{ color: 'var(--mg-ink)' }}>
+                          {booking.user?.name || 'Guest'}
+                        </p>
+                        <p className="text-xs" style={{ color: 'var(--mg-ink-3)' }}>{booking.user?.email}</p>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <Film className="w-3.5 h-3.5 text-primary" />
-                          <span className="font-bold text-white text-xs">{booking.showtime?.movie?.title || 'N/A'}</span>
-                        </div>
+                      <td className="py-3.5 px-4 text-xs sm:text-sm font-medium" style={{ color: 'var(--mg-ink)' }}>
+                        {booking.showtime?.movie?.title || 'N/A'}
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5 text-secondary" />
-                          <span className="text-xs text-white/70">{booking.showtime?.theater?.name || 'N/A'}</span>
-                        </div>
+                      <td className="py-3.5 px-4 text-xs" style={{ color: 'var(--mg-ink-2)' }}>
+                        {booking.showtime?.theater?.name || 'N/A'}
                       </td>
-                      <td className="px-6 py-4">
-                        <span className="font-mono font-bold text-green-400">₹{booking.totalAmount?.toFixed(2)}</span>
+                      <td className="py-3.5 px-4 font-mono font-bold" style={{ color: 'var(--mg-success)' }}>
+                        ₹{Number(booking.totalAmount ?? 0).toFixed(2)}
                       </td>
-                      <td className="px-6 py-4 text-muted text-xs">
+                      <td className="py-3.5 px-5 text-xs" style={{ color: 'var(--mg-ink-3)' }}>
                         {new Date(booking.createdAt).toLocaleString('en-IN')}
                       </td>
                     </tr>
@@ -316,97 +452,53 @@ const AdminPromotions = () => {
             </div>
           )}
         </div>
-      )}
-
-      {/* ── PROMO CODES TAB ── */}
-      {activeTab === 'codes' && (
-        <div className="space-y-8">
-          {/* Toolbar */}
-          <div className="bg-surface/50 border border-white/10 rounded-2xl p-4 backdrop-blur-xl">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-5 h-5 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
-              <input 
-                type="text" 
-                placeholder="Search by code abbreviation..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-surface border border-white/10 rounded-xl py-2 pl-10 pr-4 text-white placeholder:text-muted focus:outline-none focus:border-primary transition-colors text-sm"
-              />
-            </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="relative max-w-sm">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+            <input
+              type="text"
+              placeholder="Search promo codes..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="mg-input w-full pl-10 pr-3 py-2 rounded-lg text-sm"
+            />
           </div>
 
           {isLoading ? (
-            <div className="bg-surface/50 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xl">
-              <div className="px-6 py-10 text-center text-muted">
-                <Activity className="w-6 h-6 animate-pulse mx-auto mb-2 text-primary" /> Syncing network configuration...
-              </div>
+            <div className="py-16 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-7 h-7 animate-spin" style={{ color: 'var(--mg-accent)' }} />
+              <p className="text-sm" style={{ color: 'var(--mg-ink-2)' }}>Loading promo codes...</p>
             </div>
           ) : (
             <>
-              {/* Active Promos Section */}
               {activePromos.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"></div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-white/60">Active Codes ({activePromos.length})</h2>
-                  </div>
-                  <div className="bg-surface/50 border border-white/10 rounded-2xl overflow-hidden backdrop-blur-xl">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-black/20 text-muted uppercase text-[11px] tracking-wider font-bold">
-                          <tr>
-                            <th className="px-6 py-4">Promo Code</th>
-                            <th className="px-6 py-4">Scope</th>
-                            <th className="px-6 py-4">Discount</th>
-                            <th className="px-6 py-4">Usage (Used / Limit)</th>
-                            <th className="px-6 py-4">Expiry Date</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {activePromos.map(promo => renderPromoRow(promo, false))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--mg-success)' }}>
+                    Active Vouchers ({activePromos.length})
+                  </h2>
+                  {renderPromoTable(activePromos, false)}
+                </section>
               )}
 
-              {/* Expired Promos Section */}
               {expiredPromos.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-2 h-2 rounded-full bg-red-500/70"></div>
-                    <h2 className="text-sm font-black uppercase tracking-widest text-white/40">Expired Codes ({expiredPromos.length})</h2>
-                    <div className="flex-1 h-px bg-white/5"></div>
-                  </div>
-                  <div className="bg-surface/30 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-xl opacity-60">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-sm">
-                        <thead className="bg-black/20 text-muted uppercase text-[11px] tracking-wider font-bold">
-                          <tr>
-                            <th className="px-6 py-4">Promo Code</th>
-                            <th className="px-6 py-4">Scope</th>
-                            <th className="px-6 py-4">Discount</th>
-                            <th className="px-6 py-4">Usage (Used / Limit)</th>
-                            <th className="px-6 py-4">Expiry Date</th>
-                            <th className="px-6 py-4 text-right">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {expiredPromos.map(promo => renderPromoRow(promo, true))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
+                <section className="space-y-3">
+                  <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--mg-ink-3)' }}>
+                    Expired Vouchers ({expiredPromos.length})
+                  </h2>
+                  {renderPromoTable(expiredPromos, true)}
+                </section>
               )}
 
-              {/* No promos at all */}
               {activePromos.length === 0 && expiredPromos.length === 0 && (
-                <div className="bg-surface/50 border border-dashed border-white/10 rounded-2xl py-20 text-center">
-                  <Tag className="w-16 h-16 text-white/10 mx-auto mb-4" />
-                  <p className="text-muted italic">No promo codes found.</p>
+                <div
+                  className="py-16 text-center rounded-xl border border-dashed"
+                  style={{ backgroundColor: 'var(--mg-surface)', borderColor: 'var(--mg-border-strong)' }}
+                >
+                  <Tag className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--mg-ink-3)' }} />
+                  <p className="text-sm" style={{ color: 'var(--mg-ink-2)' }}>
+                    No promo codes match your filter.
+                  </p>
                 </div>
               )}
             </>
@@ -414,81 +506,159 @@ const AdminPromotions = () => {
         </div>
       )}
 
-      {/* Mint Modal */}
-      <Modal isOpen={isMintOpen} onClose={() => setIsMintOpen(false)} title={currentPromo ? "Update Promotional Code" : "Mint Promotional Code"}>
+      {/* Create / Edit Promo Modal */}
+      <Modal
+        isOpen={isMintOpen}
+        onClose={() => setIsMintOpen(false)}
+        title={currentPromo ? 'Edit Promo Code' : 'Create Promo Code'}
+        className="max-w-lg"
+      >
         <form onSubmit={handleMint} className="space-y-4">
-          <div className="flex gap-4">
-            <div className="flex-[2]">
-              <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1">Code Name</label>
-              <input type="text" required value={newPromo.code} onChange={e => setNewPromo({...newPromo, code: e.target.value.toUpperCase()})} className="w-full bg-surface border border-white/10 rounded-xl p-3 text-white focus:border-primary uppercase" placeholder="e.g. SUMMER50" />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Promo Code *
+              </label>
+              <input
+                type="text"
+                required
+                value={newPromo.code}
+                onChange={(e) => setNewPromo({ ...newPromo, code: e.target.value.toUpperCase() })}
+                placeholder="e.g. WEEKEND20"
+                className="mg-input w-full px-3.5 py-2 rounded-lg text-sm font-mono uppercase"
+              />
             </div>
-            <div className="flex-1">
-               <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1">Scope</label>
-               <select disabled={user?.role !== 'admin' && !(currentPromo && currentPromo.scope === 'global')} value={newPromo.scope} onChange={e => setNewPromo({...newPromo, scope: e.target.value})} className="w-full bg-surface border border-white/10 rounded-xl p-3 text-white focus:border-primary">
-                 <option value="global">Global</option>
-                 <option value="local">Local</option>
-               </select>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Scope
+              </label>
+              <select
+                disabled={!isSuperAdmin}
+                value={newPromo.scope}
+                onChange={(e) => setNewPromo({ ...newPromo, scope: e.target.value })}
+                className="mg-input w-full px-3 py-2 rounded-lg text-sm disabled:opacity-60"
+              >
+                <option value="global">Global</option>
+                <option value="local">Local</option>
+              </select>
             </div>
           </div>
 
-          {/* Theater Selection (Only for Local Scope) */}
           {newPromo.scope === 'local' && (
-             <div className="p-4 bg-black/20 rounded-2xl border border-white/5">
-                <label className="block text-xs font-bold text-primary uppercase tracking-[0.2em] mb-4">Applicable Cinemas</label>
-                <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-2 custom-scrollbar">
-                   {theaters.map(t => (
-                      <label key={t._id} className="flex items-center gap-3 p-2 bg-white/5 rounded-xl border border-white/5 cursor-pointer hover:border-primary/30 transition-all group">
-                         <input 
-                           type="checkbox" 
-                           checked={newPromo.theaterIds.includes(t._id)}
-                           onChange={() => toggleTheater(t._id)}
-                           className="w-4 h-4 rounded border-white/10 bg-surface accent-primary"
-                         />
-                         <div className="flex flex-col">
-                            <span className="text-xs font-bold text-white/80 group-hover:text-white">{t.name}</span>
-                            <span className="text-[8px] text-muted uppercase">{t.location}</span>
-                         </div>
-                      </label>
-                   ))}
-                </div>
-             </div>
+            <div
+              className="p-3.5 rounded-xl border space-y-2"
+              style={{ backgroundColor: 'var(--mg-surface-2)', borderColor: 'var(--mg-border)' }}
+            >
+              <label className="block text-xs font-semibold" style={{ color: 'var(--mg-ink-2)' }}>
+                Applicable Cinemas
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">
+                {theaters.map((t) => (
+                  <label
+                    key={t._id}
+                    className="flex items-start gap-2.5 p-2 rounded-lg border text-xs cursor-pointer"
+                    style={{ backgroundColor: 'var(--mg-surface)', borderColor: 'var(--mg-border)' }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={newPromo.theaterIds.includes(t._id)}
+                      onChange={() => toggleTheater(t._id)}
+                      className="mt-0.5 accent-[#e11d48]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-semibold truncate" style={{ color: 'var(--mg-ink)' }}>
+                        {t.name}
+                      </span>
+                      <span className="block text-[11px] truncate" style={{ color: 'var(--mg-ink-3)' }}>
+                        {t.location}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
           )}
 
-          <div className="flex gap-4">
-            <div className="flex-1">
-               <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1">Type</label>
-               <select value={newPromo.type} onChange={e => setNewPromo({...newPromo, type: e.target.value})} className="w-full bg-surface border border-white/10 rounded-xl p-3 text-white focus:border-primary">
-                 <option value="percentage">Percentage OFF</option>
-                 <option value="flat">Flat ₹ OFF</option>
-               </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Discount Type
+              </label>
+              <select
+                value={newPromo.type}
+                onChange={(e) => setNewPromo({ ...newPromo, type: e.target.value })}
+                className="mg-input w-full px-3 py-2 rounded-lg text-sm"
+              >
+                <option value="percentage">Percentage (%)</option>
+                <option value="flat">Flat Amount (₹)</option>
+              </select>
             </div>
-            <div className="flex-1">
-               <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1">Value</label>
-               <input type="number" required value={newPromo.value} onChange={e => setNewPromo({...newPromo, value: e.target.value})} className="w-full bg-surface border border-white/10 rounded-xl p-3 text-white focus:border-primary" placeholder="e.g. 50" />
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Value *
+              </label>
+              <input
+                type="number"
+                required
+                value={newPromo.value}
+                onChange={(e) => setNewPromo({ ...newPromo, value: e.target.value })}
+                placeholder="e.g. 20"
+                className="mg-input w-full px-3.5 py-2 rounded-lg text-sm font-mono"
+              />
             </div>
           </div>
-          <div className="flex gap-4">
-            <div className="flex-1">
-               <div className="flex items-center justify-between mb-1">
-                 <label className="block text-xs font-bold text-muted uppercase tracking-widest">Limit (Uses)</label>
-                 <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={newPromo.isUnlimited} onChange={e => setNewPromo({...newPromo, isUnlimited: e.target.checked})} className="w-4 h-4 rounded border-white/10 bg-surface accent-primary" />
-                    <span className="text-[10px] font-bold text-primary uppercase">Unlimited</span>
-                 </label>
-               </div>
-               <input type="number" disabled={newPromo.isUnlimited} required={!newPromo.isUnlimited} value={newPromo.limit} onChange={e => setNewPromo({...newPromo, limit: e.target.value})} className={`w-full bg-surface border border-white/10 rounded-xl p-3 text-white focus:border-primary ${newPromo.isUnlimited ? 'opacity-30' : ''}`} />
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-semibold" style={{ color: 'var(--mg-ink-2)' }}>
+                  Usage Limit
+                </label>
+                <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer" style={{ color: 'var(--mg-accent)' }}>
+                  <input
+                    type="checkbox"
+                    checked={newPromo.isUnlimited}
+                    onChange={(e) => setNewPromo({ ...newPromo, isUnlimited: e.target.checked })}
+                    className="accent-[#e11d48]"
+                  />
+                  Unlimited
+                </label>
+              </div>
+              <input
+                type="number"
+                disabled={newPromo.isUnlimited}
+                required={!newPromo.isUnlimited}
+                value={newPromo.limit}
+                onChange={(e) => setNewPromo({ ...newPromo, limit: e.target.value })}
+                className="mg-input w-full px-3.5 py-2 rounded-lg text-sm font-mono disabled:opacity-40"
+              />
             </div>
-            <div className="flex-1">
-               <label className="block text-xs font-bold text-muted uppercase tracking-widest mb-1">Expiry Date</label>
-               <input type="date" required value={newPromo.expiry} onChange={e => setNewPromo({...newPromo, expiry: e.target.value})} className="w-full bg-surface border border-white/10 rounded-xl p-3 text-white focus:border-primary" />
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Expiry Date *
+              </label>
+              <input
+                type="date"
+                required
+                value={newPromo.expiry}
+                onChange={(e) => setNewPromo({ ...newPromo, expiry: e.target.value })}
+                className="mg-input w-full px-3 py-2 rounded-lg text-sm"
+              />
             </div>
           </div>
-          <div className="pt-4 border-t border-white/10 flex justify-end">
-             <Button type="submit">{currentPromo ? "Update Voucher" : "Mint Voucher"}</Button>
+
+          <div className="flex justify-end gap-3 pt-4 border-t" style={{ borderColor: 'var(--mg-border)' }}>
+            <Button type="button" variant="outline" onClick={() => setIsMintOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit">
+              {currentPromo ? 'Update Voucher' : 'Save Voucher'}
+            </Button>
           </div>
         </form>
       </Modal>
-
     </div>
   );
 };

@@ -1,10 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Mail, Lock, LogIn, KeyRound, ShieldCheck, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  LogIn,
+  KeyRound,
+  ShieldCheck,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+  Film,
+  Ticket,
+  Sparkles,
+} from 'lucide-react';
 import Button from '../components/common/Button';
 import { login } from '../store/authSlice';
 import { fetchApi } from '../services/api';
+import { validatePasswordStrength } from '../utils/bookingUtils';
 
 const OTP_LENGTH = 6;
 
@@ -31,14 +46,16 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
     const newOtp = [...otp];
-    pasted.split('').forEach((char, i) => { newOtp[i] = char; });
+    pasted.split('').forEach((char, i) => {
+      newOtp[i] = char;
+    });
     setOtp(newOtp);
     const nextIndex = Math.min(pasted.length, OTP_LENGTH - 1);
     inputRefs.current[nextIndex]?.focus();
   };
 
   return (
-    <div className="flex gap-2.5 justify-center">
+    <div className="flex gap-2 sm:gap-2.5 justify-center">
       {otp.map((digit, index) => (
         <input
           key={index}
@@ -51,12 +68,13 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
           onChange={(e) => handleChange(index, e.target.value)}
           onKeyDown={(e) => handleKeyDown(index, e)}
           onPaste={index === 0 ? handlePaste : undefined}
-          className={`w-12 h-14 text-center text-xl font-bold rounded-xl border transition-all focus:outline-none
-            ${digit
-              ? 'bg-secondary/10 border-secondary text-white shadow-[0_0_15px_rgba(139,92,246,0.15)]'
-              : 'bg-black/20 border-white/10 text-white/60'
-            }
-            focus:border-secondary focus:bg-secondary/5 disabled:opacity-50`}
+          aria-label={`Verification digit ${index + 1}`}
+          className="w-11 h-12 sm:w-12 sm:h-14 text-center text-lg font-mono font-bold rounded-lg border transition-colors focus:outline-none disabled:opacity-50"
+          style={{
+            backgroundColor: digit ? 'var(--mg-accent-soft)' : 'var(--mg-input-bg)',
+            borderColor: digit ? 'var(--mg-accent)' : 'var(--mg-border-strong)',
+            color: 'var(--mg-ink)',
+          }}
         />
       ))}
     </div>
@@ -64,15 +82,14 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
 };
 
 const Login = () => {
-  // Login state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
   const [apiMessage, setApiMessage] = useState('');
-  
-  // Forgot password state
-  const [forgotStep, setForgotStep] = useState(0); // 0: login, 1: enter email, 2: enter OTP, 3: new password
+
+  // Forgot password steps: 0 = login, 1 = enter email, 2 = verify OTP, 3 = new password
+  const [forgotStep, setForgotStep] = useState(0);
   const [resetEmail, setResetEmail] = useState('');
   const [otp, setOtp] = useState(Array(OTP_LENGTH).fill(''));
   const [newPassword, setNewPassword] = useState('');
@@ -80,19 +97,22 @@ const Login = () => {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [passwordError, setPasswordError] = useState('');
-  
-  // Visibility state
+
   const [showPassword, setShowPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmNewPassword, setShowConfirmNewPassword] = useState(false);
 
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
 
-  // Cooldown timer
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   useEffect(() => {
     if (cooldown <= 0) return;
-    const timer = setTimeout(() => setCooldown(c => c - 1), 1000);
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
 
@@ -101,27 +121,32 @@ const Login = () => {
     setApiError('');
     setApiMessage('');
     setIsLoading(true);
-    
+
     try {
       const data = await fetchApi('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
       });
 
-      dispatch(login({ ...data.user, email: email, token: data.token }));
-      navigate('/');
+      dispatch(
+        login({
+          ...data.user,
+          email: data.user?.email || email,
+          token: data.token,
+        })
+      );
+      navigate(location.state?.from || '/');
     } catch (err) {
-      setApiError(err.message || 'Login failed');
+      setApiError(err.message || 'Sign in failed. Check your email and password.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Step 1: Send OTP to email
   const handleSendResetOtp = async (e) => {
     e.preventDefault();
     if (!resetEmail) {
-      setApiError('Please enter your email.');
+      setApiError('Please enter your registered email address.');
       return;
     }
     setApiError('');
@@ -129,18 +154,17 @@ const Login = () => {
     try {
       await fetchApi('/otp/send', {
         method: 'POST',
-        body: JSON.stringify({ email: resetEmail, purpose: 'reset' })
+        body: JSON.stringify({ email: resetEmail, purpose: 'reset' }),
       });
       setForgotStep(2);
       setCooldown(60);
     } catch (err) {
-      setApiError(err.message || 'Failed to send OTP');
+      setApiError(err.message || 'Failed to send reset code');
     } finally {
       setIsSendingOtp(false);
     }
   };
 
-  // Step 2: Verify OTP
   const handleVerifyResetOtp = async (e) => {
     e.preventDefault();
     const otpString = otp.join('');
@@ -153,35 +177,30 @@ const Login = () => {
     try {
       await fetchApi('/otp/verify', {
         method: 'POST',
-        body: JSON.stringify({ email: resetEmail, otp: otpString, purpose: 'reset' })
+        body: JSON.stringify({ email: resetEmail, otp: otpString, purpose: 'reset' }),
       });
       setForgotStep(3);
     } catch (err) {
-      setApiError(err.message || 'Invalid OTP');
+      setApiError(err.message || 'Invalid verification code');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Step 3: Set new password
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setApiError('');
     setPasswordError('');
 
     if (newPassword !== confirmNewPassword) {
-      setPasswordError("Passwords do not match!");
+      setPasswordError('Passwords do not match.');
       return;
     }
 
-    const minLength = newPassword.length >= 6;
-    const hasUppercase = /[A-Z]/.test(newPassword);
-    const hasSymbol = /[!@#$%^&*(),.?":{}|<>_]/.test(newPassword);
-    const hasAlphabet = /[a-zA-Z]/.test(newPassword);
-    const hasNumber = /\d/.test(newPassword);
-
-    if (!minLength || !hasUppercase || !hasSymbol || !hasAlphabet || !hasNumber) {
-      setPasswordError("Password must be at least 6 characters, contain 1 uppercase letter, 1 unique symbol, and 1 number.");
+    if (!validatePasswordStrength(newPassword)) {
+      setPasswordError(
+        'Password must be at least 6 characters and include 1 uppercase letter, 1 symbol, and 1 number.'
+      );
       return;
     }
 
@@ -189,9 +208,9 @@ const Login = () => {
     try {
       const data = await fetchApi('/auth/reset-password', {
         method: 'POST',
-        body: JSON.stringify({ email: resetEmail, newPassword, otp: otp.join('') })
+        body: JSON.stringify({ email: resetEmail, newPassword, otp: otp.join('') }),
       });
-      setApiMessage(data.message || 'Password reset successfully!');
+      setApiMessage(data.message || 'Password updated. You can now sign in.');
       setForgotStep(0);
       setNewPassword('');
       setConfirmNewPassword('');
@@ -211,12 +230,12 @@ const Login = () => {
     try {
       await fetchApi('/otp/send', {
         method: 'POST',
-        body: JSON.stringify({ email: resetEmail, purpose: 'reset' })
+        body: JSON.stringify({ email: resetEmail, purpose: 'reset' }),
       });
       setOtp(Array(OTP_LENGTH).fill(''));
       setCooldown(60);
     } catch (err) {
-      setApiError(err.message || 'Failed to resend OTP');
+      setApiError(err.message || 'Failed to resend code');
     } finally {
       setIsSendingOtp(false);
     }
@@ -232,184 +251,336 @@ const Login = () => {
     setApiError('');
   };
 
-  const getSubtitle = () => {
-    switch(forgotStep) {
-      case 1: return 'Enter your registered email to receive a reset code.';
-      case 2: return 'Enter the 6-digit code we sent to your email.';
-      case 3: return 'Create a strong new password for your account.';
-      default: return 'Welcome back. Enter the cinematic universe.';
-    }
-  };
+  const headingTitle =
+    forgotStep === 0
+      ? 'Sign in to MoviGo'
+      : forgotStep === 1
+        ? 'Reset your password'
+        : forgotStep === 2
+          ? 'Verify your email'
+          : 'Create new password';
+
+  const headingSubtitle =
+    forgotStep === 0
+      ? 'Book seats faster and keep all your cinema tickets in one place.'
+      : forgotStep === 1
+        ? 'Enter your account email and we will send a 6-digit verification code.'
+        : forgotStep === 2
+          ? `Enter the 6-digit code sent to ${resetEmail}.`
+          : 'Choose a strong password to protect your account.';
 
   return (
-    <div className="w-full min-h-screen flex -mt-24 pb-20 justify-center items-center relative">
-      <div className="absolute inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?auto=format&fit=crop&w=2560&q=80" alt="cinema" className="w-full h-full object-cover opacity-30 mix-blend-screen" />
-        <div className="absolute inset-0 bg-base/80 backdrop-blur-[2px]"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-base via-transparent to-base/80"></div>
-      </div>
-
-      <div className="relative z-10 w-full max-w-md px-4 mt-20">
-        <div className="text-center mb-8">
-           <Link to="/" className="inline-block text-4xl font-bold font-outfit tracking-tight mb-2">
-             Movie<span className="text-primary drop-shadow-[0_0_15px_rgba(244,63,94,0.6)] animate-pulse">Goo</span>
-           </Link>
-           <p className="text-white/60 text-sm">{getSubtitle()}</p>
-        </div>
-
-        {/* Step indicator for forgot password flow */}
-        {forgotStep > 0 && (
-          <div className="flex items-center justify-center gap-3 mb-6">
-            {[1, 2, 3].map(s => (
-              <React.Fragment key={s}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black transition-all ${
-                  forgotStep >= s ? 'bg-secondary text-white' : 'bg-white/10 text-white/30'
-                }`}>{s}</div>
-                {s < 3 && <div className={`w-6 h-px transition-all ${forgotStep > s ? 'bg-secondary' : 'bg-white/10'}`}></div>}
-              </React.Fragment>
-            ))}
+    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+      <div
+        className="grid grid-cols-1 lg:grid-cols-12 rounded-2xl border overflow-hidden"
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          borderColor: 'var(--mg-border)',
+          boxShadow: 'var(--mg-shadow-md)',
+        }}
+      >
+        {/* Left Editorial Panel (Desktop) */}
+        <div
+          className="hidden lg:flex lg:col-span-5 flex-col justify-between p-10 border-r"
+          style={{
+            backgroundColor: 'var(--mg-surface-2)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <div>
+            <Link to="/" className="inline-flex items-center gap-2 font-display font-bold text-xl" style={{ color: 'var(--mg-ink)' }}>
+              <Film className="w-5 h-5" style={{ color: 'var(--mg-accent)' }} />
+              MoviGo
+            </Link>
+            <h2 className="text-2xl font-display font-bold mt-8 mb-3 leading-snug" style={{ color: 'var(--mg-ink)' }}>
+              Your cinema nights, effortlessly organized.
+            </h2>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+              Sign in to access digital QR passes, track rewards points, and enjoy Inner Circle booking perks.
+            </p>
           </div>
-        )}
 
-        <div className="bg-surface/60 backdrop-blur-3xl border border-white/10 rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-          {apiError && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-semibold flex items-center justify-between">
-              {apiError}
-              <button type="button" onClick={() => setApiError('')} className="text-red-400 hover:text-white">&times;</button>
-            </div>
-          )}
-          {apiMessage && (
-            <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-green-400 text-sm font-semibold flex items-center justify-between">
-              {apiMessage}
-              <button type="button" onClick={() => setApiMessage('')} className="text-green-400 hover:text-white">&times;</button>
-            </div>
-          )}
-
-          {forgotStep === 0 && (
-            /* Login Form */
-            <form onSubmit={handleLogin} className="space-y-6 animate-in slide-in-from-right-4">
-              <div className="space-y-4">
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input type="email" required placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all" />
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input type={showPassword ? "text" : "password"} required placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-12 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors">
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end">
-                <button type="button" onClick={() => setForgotStep(1)} className="text-sm text-primary hover:text-white transition-colors cursor-pointer">Forgot password?</button>
-              </div>
-
-              <Button type="submit" className="w-full shadow-[0_0_20px_rgba(244,63,94,0.3)] flex justify-center py-3.5" disabled={isLoading}>
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><LogIn className="w-5 h-5 mr-2" />Sign In</>}
-              </Button>
-            </form>
-          )}
-
-          {forgotStep === 1 && (
-            /* Forgot Password - Step 1: Enter Email */
-            <form onSubmit={handleSendResetOtp} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center mb-2">
-                <div className="w-16 h-16 bg-secondary/10 border border-secondary/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <Mail className="w-8 h-8 text-secondary" />
-                </div>
-                <h3 className="text-xl font-bold text-white">Forgot Password?</h3>
-              </div>
-              
-              <div className="relative">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                <input type="email" required placeholder="Enter your registered email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-white/40 focus:outline-none focus:border-secondary focus:bg-white/5 transition-all" />
-              </div>
-
-              <Button type="submit" className="w-full bg-secondary hover:bg-secondary/80 shadow-[0_0_20px_rgba(139,92,246,0.3)] flex justify-center py-3.5" disabled={isSendingOtp}>
-                {isSendingOtp ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ArrowRight className="w-5 h-5 mr-2" />Send Reset Code</>}
-              </Button>
-
-              <button type="button" onClick={resetForgotFlow} className="w-full text-center text-sm text-muted hover:text-white transition-colors cursor-pointer">← Back to Login</button>
-            </form>
-          )}
-
-          {forgotStep === 2 && (
-            /* Forgot Password - Step 2: Verify OTP */
-            <form onSubmit={handleVerifyResetOtp} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-secondary/10 border border-secondary/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheck className="w-8 h-8 text-secondary" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Verify Your Identity</h3>
-                <p className="text-white/50 text-sm">Code sent to <span className="text-secondary font-bold">{resetEmail}</span></p>
-              </div>
-
-              <OtpInputGroup otp={otp} setOtp={setOtp} disabled={isLoading} />
-
-              <div className="text-center">
-                {cooldown > 0 ? (
-                  <p className="text-white/30 text-xs">Resend in <span className="text-secondary font-bold">{cooldown}s</span></p>
-                ) : (
-                  <button type="button" onClick={handleResendOtp} disabled={isSendingOtp} className="text-secondary text-xs font-bold hover:text-white transition-colors cursor-pointer">
-                    {isSendingOtp ? 'Sending...' : 'Resend Code'}
-                  </button>
-                )}
-              </div>
-
-              <Button type="submit" className="w-full bg-secondary hover:bg-secondary/80 shadow-[0_0_20px_rgba(139,92,246,0.3)] flex justify-center py-3.5" disabled={isLoading}>
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><ShieldCheck className="w-5 h-5 mr-2" />Verify Code</>}
-              </Button>
-
-              <button type="button" onClick={resetForgotFlow} className="w-full text-center text-sm text-muted hover:text-white transition-colors cursor-pointer">← Back to Login</button>
-            </form>
-          )}
-
-          {forgotStep === 3 && (
-            /* Forgot Password - Step 3: New Password */
-            <form onSubmit={handleResetPassword} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center mb-2">
-                <div className="w-16 h-16 bg-green-500/10 border border-green-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <KeyRound className="w-8 h-8 text-green-400" />
-                </div>
-                <h3 className="text-xl font-bold text-white">Set New Password</h3>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="relative">
-                  <KeyRound className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input type={showNewPassword ? "text" : "password"} required placeholder="New Password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-12 text-white placeholder:text-white/40 focus:outline-none focus:border-green-500 focus:bg-white/5 transition-all" />
-                  <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors">
-                    {showNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input type={showConfirmNewPassword ? "text" : "password"} required placeholder="Confirm New Password" value={confirmNewPassword} onChange={(e) => setConfirmNewPassword(e.target.value)} onPaste={(e) => e.preventDefault()} className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-12 text-white placeholder:text-white/40 focus:outline-none focus:border-green-500 focus:bg-white/5 transition-all" />
-                  <button type="button" onClick={() => setShowConfirmNewPassword(!showConfirmNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors">
-                    {showConfirmNewPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              {passwordError && (
-                <div className="text-red-400 text-xs font-semibold px-2">{passwordError}</div>
-              )}
-
-              <Button type="submit" className="w-full !bg-green-600 hover:!bg-green-700 shadow-[0_0_20px_rgba(34,197,94,0.3)] flex justify-center py-3.5" disabled={isLoading}>
-                {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <><KeyRound className="w-5 h-5 mr-2" />Reset Password</>}
-              </Button>
-            </form>
-          )}
-
-          {forgotStep === 0 && (
-            <div className="mt-8 pt-6 border-t border-white/10 text-center">
-              <p className="text-white/60 text-sm">
-                Don't have an account? <Link to="/register" className="text-white font-bold hover:text-primary transition-colors hover:underline">Sign up for free</Link>
+          <div className="space-y-4 pt-8">
+            <div className="flex items-start gap-3">
+              <Ticket className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--mg-accent)' }} />
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+                Instant seat selection, live screen layouts, and downloadable PDF tickets.
               </p>
             </div>
-          )}
+            <div className="flex items-start gap-3">
+              <Sparkles className="w-4 h-4 mt-0.5 shrink-0" style={{ color: 'var(--mg-gold)' }} />
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+                Earn loyalty points on bookings and unlock Inner Circle savings.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Form Panel */}
+        <div className="lg:col-span-7 p-6 sm:p-10 md:p-12">
+          <div className="max-w-md mx-auto">
+            <div className="mb-7">
+              <h1 className="text-2xl sm:text-3xl font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+                {headingTitle}
+              </h1>
+              <p className="text-sm mt-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                {headingSubtitle}
+              </p>
+            </div>
+
+            {apiMessage && (
+              <div
+                className="mb-5 px-4 py-3 rounded-lg border text-sm font-medium flex items-center gap-2"
+                style={{
+                  backgroundColor: 'var(--mg-success-soft)',
+                  borderColor: 'var(--mg-success)',
+                  color: 'var(--mg-success)',
+                }}
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{apiMessage}</span>
+              </div>
+            )}
+
+            {apiError && (
+              <div
+                className="mb-5 px-4 py-3 rounded-lg border text-sm font-medium flex items-center gap-2"
+                style={{
+                  backgroundColor: 'var(--mg-danger-soft)',
+                  borderColor: 'var(--mg-danger)',
+                  color: 'var(--mg-danger)',
+                }}
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{apiError}</span>
+              </div>
+            )}
+
+            {forgotStep === 0 && (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                    Email Address
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="mg-input w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-semibold" style={{ color: 'var(--mg-ink-2)' }}>
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotStep(1);
+                        setApiError('');
+                        setApiMessage('');
+                      }}
+                      className="text-xs font-semibold hover:underline cursor-pointer"
+                      style={{ color: 'var(--mg-accent)' }}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="mg-input w-full pl-10 pr-10 py-2.5 rounded-lg text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                      style={{ color: 'var(--mg-ink-3)' }}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <Button type="submit" size="lg" className="w-full mt-2" isLoading={isLoading}>
+                  <LogIn className="w-4 h-4" />
+                  Sign In
+                </Button>
+              </form>
+            )}
+
+            {forgotStep === 1 && (
+              <form onSubmit={handleSendResetOtp} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                    Registered Email
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                    <input
+                      type="email"
+                      required
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="mg-input w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                <Button type="submit" size="lg" className="w-full" isLoading={isSendingOtp}>
+                  Send Verification Code
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={resetForgotFlow}
+                  className="w-full text-center text-xs font-semibold py-2 cursor-pointer hover:underline"
+                  style={{ color: 'var(--mg-ink-2)' }}
+                >
+                  Back to Sign In
+                </button>
+              </form>
+            )}
+
+            {forgotStep === 2 && (
+              <form onSubmit={handleVerifyResetOtp} className="space-y-5">
+                <OtpInputGroup otp={otp} setOtp={setOtp} disabled={isLoading} />
+
+                <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
+                  <ShieldCheck className="w-4 h-4" />
+                  Verify Code
+                </Button>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={cooldown > 0 || isSendingOtp}
+                    className="font-semibold cursor-pointer disabled:opacity-50 hover:underline"
+                    style={{ color: 'var(--mg-accent)' }}
+                  >
+                    {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={resetForgotFlow}
+                    className="font-semibold cursor-pointer hover:underline"
+                    style={{ color: 'var(--mg-ink-2)' }}
+                  >
+                    Back to Sign In
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {forgotStep === 3 && (
+              <form onSubmit={handleResetPassword} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <KeyRound className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      value={newPassword}
+                      onChange={(e) => {
+                        setNewPassword(e.target.value);
+                        if (passwordError) setPasswordError('');
+                      }}
+                      placeholder="Create a strong password"
+                      className="mg-input w-full pl-10 pr-10 py-2.5 rounded-lg text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((v) => !v)}
+                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                      style={{ color: 'var(--mg-ink-3)' }}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                    Confirm New Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                    <input
+                      type={showConfirmNewPassword ? 'text' : 'password'}
+                      required
+                      value={confirmNewPassword}
+                      onChange={(e) => {
+                        setConfirmNewPassword(e.target.value);
+                        if (passwordError) setPasswordError('');
+                      }}
+                      placeholder="Re-enter password"
+                      className="mg-input w-full pl-10 pr-10 py-2.5 rounded-lg text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmNewPassword((v) => !v)}
+                      aria-label={showConfirmNewPassword ? 'Hide password' : 'Show password'}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                      style={{ color: 'var(--mg-ink-3)' }}
+                    >
+                      {showConfirmNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {passwordError && (
+                  <p className="text-xs font-medium" style={{ color: 'var(--mg-danger)' }}>
+                    {passwordError}
+                  </p>
+                )}
+
+                <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
+                  Update Password
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={resetForgotFlow}
+                  className="w-full text-center text-xs font-semibold py-2 cursor-pointer hover:underline"
+                  style={{ color: 'var(--mg-ink-2)' }}
+                >
+                  Cancel
+                </button>
+              </form>
+            )}
+
+            <div className="mt-7 pt-6 border-t text-center text-sm" style={{ borderColor: 'var(--mg-border)', color: 'var(--mg-ink-2)' }}>
+              New to MoviGo?{' '}
+              <Link
+                to="/register"
+                state={location.state}
+                className="font-semibold hover:underline"
+                style={{ color: 'var(--mg-accent)' }}
+              >
+                Create an account
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>

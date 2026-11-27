@@ -1,51 +1,36 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const Showtime = require('../models/Showtime');
+const Theater = require('../models/Theater');
+const Movie = require('../models/Movie');
 const { verifyToken, theaterAdminOnly } = require('../middleware/authMiddleware');
+const { formatLocalDate, isValidISODate, evaluateBookingWindow } = require('../utils/dateUtils');
+const { isAdminRole, getAuthorizedTheaterIds } = require('../utils/authHelpers');
 
-// Helper: check if a showtime is still active (not expired)
-const isShowtimeActive = (showtime) => {
-  const now = new Date();
-  const todayStr = now.toISOString().split('T')[0];
-  
-  if (!showtime.date) return true;
-  
-  // If the show date is in the future, it's definitely active
-  if (showtime.date > todayStr) return true;
-  
-  // If the show date is in the past, it's expired
-  if (showtime.date < todayStr) return false;
-  
-  // If the show is today, check the time
-  if (showtime.date === todayStr && showtime.time) {
-    const timeStr = showtime.time;
-    let showMinutes = 0;
-    if (/AM|PM/i.test(timeStr)) {
-      const [time, period] = timeStr.split(' ');
-      let [h, m] = time.split(':').map(Number);
-      if (period.toUpperCase() === 'PM' && h !== 12) h += 12;
-      if (period.toUpperCase() === 'AM' && h === 12) h = 0;
-      showMinutes = h * 60 + (m || 0);
-    } else {
-      const [h, m] = timeStr.split(':').map(Number);
-      showMinutes = h * 60 + (m || 0);
-    }
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    return nowMinutes <= showMinutes;
+// Helper: show stays visible for booking until 45 minutes after show start
+const isShowtimeActive = (showtime, now = new Date()) => {
+  if (!showtime?.date) return true;
+  if (!showtime?.time) {
+    return showtime.date >= formatLocalDate(now);
   }
-  
-  return true;
+  const win = evaluateBookingWindow(showtime.date, showtime.time, now);
+  return win.valid ? win.canBook : false;
 };
 
 // GET /api/showtimes/movie/:movieId -> Get active showtimes for a specific movie (Public)
 router.get('/movie/:movieId', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.movieId)) {
+      return res.status(404).json({ message: 'Movie not found' });
+    }
     const showtimes = await Showtime.find({ movie: req.params.movieId })
       .populate('theater')
       .sort({ date: 1, time: 1 });
-    
-    // Filter out expired showtimes for public browsing
-    const active = showtimes.filter(isShowtimeActive);
+
+    const active = showtimes.filter(
+      (s) => s.theater && s.theater.approvalStatus === 'Approved' && isShowtimeActive(s)
+    );
     res.json(active);
   } catch (error) {
     res.status(500).json({ message: 'Server error fetching showtimes', error: error.message });
@@ -55,13 +40,15 @@ router.get('/movie/:movieId', async (req, res) => {
 // GET /api/showtimes/theater/:theaterId -> Get active showtimes for a specific theater (Public)
 router.get('/theater/:theaterId', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.theaterId)) {
+      return res.status(404).json({ message: 'Theater not found' });
+    }
     const showtimes = await Showtime.find({ theater: req.params.theaterId })
       .populate('movie')
       .populate('theater')
       .sort({ date: 1, time: 1 });
-    
-    // Filter out expired showtimes for public browsing
-    const active = showtimes.filter(isShowtimeActive);
+
+    const active = showtimes.filter((s) => s.movie && s.theater && isShowtimeActive(s));
     res.json(active);
   } catch (error) {
     res.status(500).json({ message: 'Server error fetching theater showtimes', error: error.message });
@@ -71,90 +58,161 @@ router.get('/theater/:theaterId', async (req, res) => {
 // GET /api/showtimes/:id -> Get specific showtime details (Public)
 router.get('/:id', async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Showtime not found' });
+    }
     const showtime = await Showtime.findById(req.params.id)
       .populate('theater')
       .populate('movie');
     if (!showtime) return res.status(404).json({ message: 'Showtime not found' });
-    
-    // Filter out expired locks before sending
+
     const now = new Date();
-    showtime.lockedSeats = showtime.lockedSeats.filter(ls => ls.expiresAt > now);
-    
+    showtime.lockedSeats = showtime.lockedSeats.filter((ls) => ls.expiresAt > now);
+
     res.json(showtime);
   } catch (error) {
     res.status(500).json({ message: 'Error fetching showtime', error: error.message });
   }
 });
 
-// POST /api/showtimes -> Add a new showtime (Admin/Theater Manager)
+// POST /api/showtimes -> Add a new showtime (Admin/Authorized Theater Manager)
 router.post('/', verifyToken, theaterAdminOnly, async (req, res) => {
-  // If endDate is provided, we do bulk generation
-  const { theater, movie, date, endDate, time, screenNumber } = req.body;
+  const { theater, movie, date, endDate, time, screenNumber } = req.body || {};
   try {
-    const Theater = require('../models/Theater');
-    const theaterDoc = await Theater.findById(theater);
-    if (!theaterDoc || theaterDoc.approvalStatus !== 'Approved') {
-        return res.status(403).json({ message: 'Cannot add showtimes to an unapproved theater' });
+    if (!mongoose.Types.ObjectId.isValid(theater) || !mongoose.Types.ObjectId.isValid(movie)) {
+      return res.status(400).json({ message: 'Valid theater and movie IDs are required' });
+    }
+    if (!isValidISODate(date) || typeof time !== 'string' || !time.trim()) {
+      return res.status(400).json({ message: 'Valid date (YYYY-MM-DD) and time are required' });
     }
 
+    const [theaterDoc, movieDoc] = await Promise.all([
+      Theater.findById(theater),
+      Movie.findById(movie)
+    ]);
+
+    if (!theaterDoc || theaterDoc.approvalStatus !== 'Approved') {
+      return res.status(403).json({ message: 'Cannot add showtimes to an unapproved theater' });
+    }
+    if (!movieDoc) {
+      return res.status(404).json({ message: 'Movie not found' });
+    }
+
+    if (!isAdminRole(req.user.role)) {
+      const { stringIds } = await getAuthorizedTheaterIds(req.user.id, req.user.theaterIds);
+      if (!stringIds.includes(theaterDoc._id.toString())) {
+        return res.status(403).json({ message: 'Not authorized to schedule showtimes for this theater' });
+      }
+    }
+
+    const screenNum = Number(screenNumber) || 1;
+    const trimmedTime = time.trim();
+
     if (endDate) {
-      // Bulk generation
-      let currentDate = new Date(date);
-      const end = new Date(endDate);
+      if (!isValidISODate(endDate)) {
+        return res.status(400).json({ message: 'Invalid endDate format (expected YYYY-MM-DD)' });
+      }
+      if (endDate < date) {
+        return res.status(400).json({ message: 'endDate must be on or after start date' });
+      }
+
+      const [sy, sm, sd] = date.split('-').map(Number);
+      const [ey, em, ed] = endDate.split('-').map(Number);
+      const startUtc = new Date(Date.UTC(sy, sm - 1, sd));
+      const endUtc = new Date(Date.UTC(ey, em - 1, ed));
+      const daySpan = Math.round((endUtc - startUtc) / 86400000) + 1;
+
+      if (daySpan > 90) {
+        return res.status(400).json({ message: 'Bulk showtime scheduling is limited to 90 days at a time' });
+      }
+
       const newShowtimes = [];
-      
-      while (currentDate <= end) {
-        const currentDateString = currentDate.toISOString().split('T')[0];
-        const newShowtime = new Showtime({
+      for (let i = 0; i < daySpan; i++) {
+        const d = new Date(Date.UTC(sy, sm - 1, sd + i));
+        const currentDateString = d.toISOString().split('T')[0];
+        newShowtimes.push({
           theater,
           movie,
-          screenNumber,
+          screenNumber: screenNum,
           date: currentDateString,
-          time,
+          time: trimmedTime,
           bookedSeats: [],
           lockedSeats: []
         });
-        newShowtimes.push(newShowtime);
-        
-        // Add 1 day
-        currentDate.setDate(currentDate.getDate() + 1);
       }
-      
+
       const saved = await Showtime.insertMany(newShowtimes);
       return res.status(201).json(saved);
-      
-    } else {
-      // Single generation
-      const newShowtime = new Showtime({
-        theater,
-        movie,
-        screenNumber,
-        date,
-        time,
-        bookedSeats: [],
-        lockedSeats: []
-      });
-      const saved = await newShowtime.save();
-      return res.status(201).json(saved);
     }
+
+    const newShowtime = new Showtime({
+      theater,
+      movie,
+      screenNumber: screenNum,
+      date,
+      time: trimmedTime,
+      bookedSeats: [],
+      lockedSeats: []
+    });
+    const saved = await newShowtime.save();
+    return res.status(201).json(saved);
   } catch (error) {
     res.status(500).json({ message: 'Error creating showtime(s)', error: error.message });
   }
 });
 
-// PUT /api/showtimes/:id -> Update a showtime (Admin/Theater Manager)
+// PUT /api/showtimes/:id -> Update a showtime (Admin/Authorized Theater Manager)
 router.put('/:id', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
-    const updated = await Showtime.findByIdAndUpdate(req.params.id, req.body, { new: true }).populate('theater');
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Showtime not found' });
+    }
+
+    const existing = await Showtime.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Showtime not found' });
+
+    if (!isAdminRole(req.user.role)) {
+      const { stringIds } = await getAuthorizedTheaterIds(req.user.id, req.user.theaterIds);
+      if (!stringIds.includes(existing.theater.toString())) {
+        return res.status(403).json({ message: 'Not authorized to update this showtime' });
+      }
+      if (req.body?.theater && !stringIds.includes(req.body.theater.toString())) {
+        return res.status(403).json({ message: 'Not authorized for target theater' });
+      }
+    }
+
+    const updates = {};
+    const { movie, screenNumber, date, time, theater } = req.body || {};
+    if (movie && mongoose.Types.ObjectId.isValid(movie)) updates.movie = movie;
+    if (theater && mongoose.Types.ObjectId.isValid(theater)) updates.theater = theater;
+    if (screenNumber !== undefined) updates.screenNumber = Number(screenNumber) || 1;
+    if (date && isValidISODate(date)) updates.date = date;
+    if (typeof time === 'string' && time.trim()) updates.time = time.trim();
+
+    const updated = await Showtime.findByIdAndUpdate(req.params.id, updates, { new: true }).populate('theater');
     res.json(updated);
   } catch (error) {
     res.status(500).json({ message: 'Error updating showtime', error: error.message });
   }
 });
 
-// DELETE /api/showtimes/:id -> Delete a showtime (Admin/Theater Manager)
+// DELETE /api/showtimes/:id -> Delete a showtime (Admin/Authorized Theater Manager)
 router.delete('/:id', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Showtime not found' });
+    }
+
+    const existing = await Showtime.findById(req.params.id);
+    if (!existing) return res.status(404).json({ message: 'Showtime not found' });
+
+    if (!isAdminRole(req.user.role)) {
+      const { stringIds } = await getAuthorizedTheaterIds(req.user.id, req.user.theaterIds);
+      if (!stringIds.includes(existing.theater.toString())) {
+        return res.status(403).json({ message: 'Not authorized to delete this showtime' });
+      }
+    }
+
     await Showtime.findByIdAndDelete(req.params.id);
     res.json({ message: 'Showtime deleted' });
   } catch (error) {

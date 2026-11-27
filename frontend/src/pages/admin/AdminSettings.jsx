@@ -1,17 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, UserPlus, CheckCircle, Activity, Building2 } from 'lucide-react';
-import { fetchApi } from '../../services/api';
+import {
+  UserPlus,
+  CheckCircle2,
+  AlertCircle,
+  Image as ImageIcon,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
+import { fetchApi, uploadFile } from '../../services/api';
 import Button from '../../components/common/Button';
 import { useSelector } from 'react-redux';
 import { Navigate } from 'react-router-dom';
 
 const AdminSettings = () => {
-  const { user } = useSelector(state => state.auth);
+  const { user } = useSelector((state) => state.auth);
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'master_admin';
   const [theaters, setTheaters] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Form State
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,54 +28,52 @@ const AdminSettings = () => {
     password: '',
     role: 'admin',
     theaterId: '',
-    profilePhotoFile: null
+    profilePhotoFile: null,
   });
 
-  if (user?.role !== 'admin') {
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetchApi('/theaters/admin')
+      .then((list) => setTheaters(Array.isArray(list) ? list : []))
+      .catch((err) => console.error(err));
+  }, [isSuperAdmin]);
+
+  if (!isSuperAdmin) {
     return <Navigate to="/admin" />;
   }
-
-  useEffect(() => {
-    fetchApi('/theaters')
-      .then(data => setTheaters(data))
-      .catch(err => console.error(err));
-  }, []);
 
   const handleCreateStaff = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setIsSuccess(false);
+    setError('');
 
     try {
       let profilePhotoUrl = null;
 
-      // Handle Image Upload if file exists
       if (formData.profilePhotoFile) {
-        const uploadFormData = new FormData();
-        uploadFormData.append('image', formData.profilePhotoFile);
-
-        const uploadRes = await fetch('http://localhost:5000/api/upload', {
-          method: 'POST',
-          body: uploadFormData
-        });
-        
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
+        const uploadData = await uploadFile(formData.profilePhotoFile);
+        if (uploadData.url) {
           profilePhotoUrl = uploadData.url;
         }
       }
 
-      const payload = { 
-        ...formData,
-        profilePhoto: profilePhotoUrl
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        mobile: formData.mobile,
+        password: formData.password,
+        role: formData.role,
+        theaterIds:
+          formData.role === 'theater_admin' && formData.theaterId ? [formData.theaterId] : [],
+        profilePhoto: profilePhotoUrl,
       };
-      if (payload.role === 'admin') payload.theaterId = null;
 
       await fetchApi('/users/staff', {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
-      
+
       setIsSuccess(true);
       setFormData({
         name: '',
@@ -75,101 +82,205 @@ const AdminSettings = () => {
         password: '',
         role: 'admin',
         theaterId: '',
-        profilePhotoFile: null
+        profilePhotoFile: null,
       });
-      
+
       setTimeout(() => setIsSuccess(false), 5000);
     } catch (err) {
-      alert("Failed to create staff account.");
+      setError(err.message || 'Failed to create staff account.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="p-6 md:p-10 w-full animate-in fade-in duration-500 max-w-4xl mx-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-10">
-        <div>
-          <h1 className="text-3xl font-bold font-outfit text-white mb-2">Staff Management</h1>
-          <p className="text-muted">Master Admin Override: Provision high-level access nodes.</p>
-        </div>
+    <div className="p-6 lg:p-8 max-w-3xl mx-auto space-y-6">
+      <div>
+        <h1 className="text-2xl sm:text-3xl font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+          Staff &amp; Access Provisioning
+        </h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--mg-ink-2)' }}>
+          Create administrator or cinema venue manager accounts with scoped permissions.
+        </p>
       </div>
 
-      <div className="bg-surface/50 border border-white/10 rounded-2xl p-8 backdrop-blur-xl">
-        <div className="flex items-center gap-3 mb-8 pb-6 border-b border-white/10 text-secondary font-bold uppercase tracking-widest text-sm">
-          <ShieldAlert className="w-5 h-5" />
-          Authorize New Command Agent
+      <div
+        className="rounded-xl border p-6 sm:p-8"
+        style={{ backgroundColor: 'var(--mg-surface)', borderColor: 'var(--mg-border)' }}
+      >
+        <div
+          className="flex items-center gap-2 pb-4 mb-6 border-b font-display font-bold text-base"
+          style={{ borderColor: 'var(--mg-border)', color: 'var(--mg-ink)' }}
+        >
+          <UserPlus className="w-4 h-4" style={{ color: 'var(--mg-accent)' }} />
+          Add Staff Member
         </div>
 
         {isSuccess && (
-          <div className="mb-8 p-4 bg-green-500/10 border border-green-500/20 rounded-xl flex items-center text-green-400 gap-3">
-             <CheckCircle className="w-5 h-5" />
-             <span className="font-bold">Clearance Granted. Agent integrated into the network.</span>
+          <div
+            className="mb-5 px-4 py-3 rounded-lg border text-sm font-medium flex items-center gap-2"
+            style={{
+              backgroundColor: 'var(--mg-success-soft)',
+              borderColor: 'var(--mg-success)',
+              color: 'var(--mg-success)',
+            }}
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Staff account created successfully.
           </div>
         )}
 
-        <form onSubmit={handleCreateStaff} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {error && (
+          <div
+            className="mb-5 px-4 py-3 rounded-lg border text-sm font-medium flex items-center gap-2"
+            style={{
+              backgroundColor: 'var(--mg-danger-soft)',
+              borderColor: 'var(--mg-danger)',
+              color: 'var(--mg-danger)',
+            }}
+          >
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleCreateStaff} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest">Agent Designation (Name)</label>
-              <input required type="text" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-secondary" placeholder="e.g. John Doe" />
-            </div>
-            
-            <div>
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest">Comm Link (Email)</label>
-              <input required type="email" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-secondary" placeholder="admin@domain.com" />
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Full Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g. Ananya Iyer"
+                className="mg-input w-full px-3.5 py-2.5 rounded-lg text-sm"
+              />
             </div>
 
             <div>
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest">Mobile Nexus (Phone)</label>
-              <input required type="tel" value={formData.mobile} onChange={(e) => setFormData({...formData, mobile: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-secondary" placeholder="e.g. 1234567890" />
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Email Address *
+              </label>
+              <input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                placeholder="staff@movigo.com"
+                className="mg-input w-full px-3.5 py-2.5 rounded-lg text-sm"
+              />
             </div>
 
             <div>
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest">Identity Image (Profile Photo)</label>
-              <div className="relative flex items-center bg-black/40 border border-white/10 rounded-xl p-4 transition-all focus-within:border-secondary">
-                <div className="w-full flex items-center justify-between">
-                  <span className="text-white/40 text-sm truncate max-w-[150px]">{formData.profilePhotoFile ? formData.profilePhotoFile.name : 'Upload Identity Photo'}</span>
-                  <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
-                    Browse
-                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { if (e.target.files[0]) setFormData({...formData, profilePhotoFile: e.target.files[0]}) }} />
-                  </label>
-                </div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Mobile Number *
+              </label>
+              <input
+                type="tel"
+                required
+                value={formData.mobile}
+                onChange={(e) => setFormData({ ...formData, mobile: e.target.value })}
+                placeholder="+91 98765 43210"
+                className="mg-input w-full px-3.5 py-2.5 rounded-lg text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Temporary Password *
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Create password"
+                  className="mg-input w-full pl-3.5 pr-10 py-2.5 rounded-lg text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                  style={{ color: 'var(--mg-ink-3)' }}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest">Initial Encryption Key (Password)</label>
-              <input required type="text" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-secondary" placeholder="Temporary password" />
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Role *
+              </label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                className="mg-input w-full px-3.5 py-2.5 rounded-lg text-sm"
+              >
+                <option value="admin">Platform Admin</option>
+                <option value="theater_admin">Cinema Venue Manager</option>
+              </select>
             </div>
 
-            <div>
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest">Clearance Level</label>
-              <select value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-white focus:outline-none focus:border-secondary appearance-none">
-                <option value="admin">Master Admin Phase II</option>
-                <option value="theater_admin">Theater Branch Commander</option>
-              </select>
+            {formData.role === 'theater_admin' && (
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                  Assigned Cinema *
+                </label>
+                <select
+                  required
+                  value={formData.theaterId}
+                  onChange={(e) => setFormData({ ...formData, theaterId: e.target.value })}
+                  className="mg-input w-full px-3.5 py-2.5 rounded-lg text-sm"
+                >
+                  <option value="">Select cinema...</option>
+                  {theaters.map((t) => (
+                    <option key={t._id} value={t._id}>
+                      {t.name} ({t.location})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Profile Photo (Optional)
+              </label>
+              <label
+                className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-dashed cursor-pointer text-xs"
+                style={{
+                  backgroundColor: 'var(--mg-input-bg)',
+                  borderColor: 'var(--mg-border-strong)',
+                  color: 'var(--mg-ink-2)',
+                }}
+              >
+                <ImageIcon className="w-4 h-4 shrink-0" />
+                <span className="truncate">
+                  {formData.profilePhotoFile ? formData.profilePhotoFile.name : 'Choose image file'}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) =>
+                    setFormData({ ...formData, profilePhotoFile: e.target.files?.[0] || null })
+                  }
+                  className="sr-only"
+                />
+              </label>
             </div>
           </div>
 
-          {formData.role === 'theater_admin' && (
-            <div className="animate-in fade-in slide-in-from-top-2">
-              <label className="block text-[10px] font-black uppercase text-muted mb-2 tracking-widest flex items-center gap-2">
-                <Building2 className="w-3 h-3 text-secondary" /> Assigned Branch
-              </label>
-              <select required value={formData.theaterId} onChange={(e) => setFormData({...formData, theaterId: e.target.value})} className="w-full bg-primary/5 border border-primary/20 rounded-xl p-4 text-white focus:outline-none focus:border-primary appearance-none">
-                <option value="">Select Theater Node...</option>
-                {theaters.map(t => (
-                  <option key={t._id} value={t._id}>{t.name} ({t.location})</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div className="pt-6 mt-6 border-t border-white/10 flex justify-end">
-             <Button type="submit" disabled={isLoading} className="px-10 h-14 bg-secondary shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-               {isLoading ? <Activity className="w-5 h-5 animate-spin" /> : <><UserPlus className="w-5 h-5 mr-2" /> Authorize & Provision</>}
-             </Button>
+          <div className="flex justify-end pt-3">
+            <Button type="submit" isLoading={isLoading}>
+              <UserPlus className="w-4 h-4" />
+              Create Staff Account
+            </Button>
           </div>
         </form>
       </div>

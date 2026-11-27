@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
-import { Search, User, Menu, X, Ticket, LogOut, AlertTriangle } from 'lucide-react';
-import { logout } from '../../store/authSlice';
-import { setCheckoutLocked } from '../../store/bookingSlice';
+import { Search, User, Menu, X, Ticket, AlertTriangle, Shield, LogOut, Sun, Moon } from 'lucide-react';
+import { setCheckoutLocked, setPendingBookingId, clearSeats } from '../../store/bookingSlice';
 import { getTrendingMovies } from '../../services/movieService';
 import { getTheaters } from '../../services/theaterService';
+import { fetchApi } from '../../services/api';
 import Modal from './Modal';
 import Button from './Button';
 import LogoutModal from './LogoutModal';
@@ -13,107 +13,175 @@ import LogoutModal from './LogoutModal';
 const Navbar = () => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [moviesList, setMoviesList] = useState([]);
   const [theatersList, setTheatersList] = useState([]);
-  const [suggestions, setSuggestions] = useState([]);
-  
+  const [isLightMode, setIsLightMode] = useState(() => localStorage.getItem('theme') === 'light');
+
   // Navigation Guard State
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [pendingPath, setPendingPath] = useState(null);
-  
+  const [pendingLogout, setPendingLogout] = useState(false);
+  const searchInputRef = useRef(null);
+  const blurTimeoutRef = useRef(null);
+
   const location = useLocation();
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const { isAuthenticated, user } = useSelector(state => state.auth);
-  const { isCheckoutLocked } = useSelector(state => state.booking);
+  const { isAuthenticated, user } = useSelector((state) => state.auth);
+  const { isCheckoutLocked, pendingBookingId } = useSelector((state) => state.booking);
+
+  const toggleTheme = () => {
+    const next = !isLightMode;
+    setIsLightMode(next);
+    if (next) {
+      document.body.classList.add('light-theme');
+      localStorage.setItem('theme', 'light');
+    } else {
+      document.body.classList.remove('light-theme');
+      localStorage.setItem('theme', 'dark');
+    }
+    window.dispatchEvent(new Event('mg-theme-change'));
+  };
+
+  useEffect(() => {
+    const syncTheme = () => setIsLightMode(document.body.classList.contains('light-theme'));
+    window.addEventListener('mg-theme-change', syncTheme);
+    return () => window.removeEventListener('mg-theme-change', syncTheme);
+  }, []);
 
   const handleNavClick = (e, path) => {
     if (isCheckoutLocked) {
-      e.preventDefault();
+      e?.preventDefault();
+      setPendingLogout(false);
       setPendingPath(path);
       setShowLeaveModal(true);
+      return false;
+    }
+    return true;
+  };
+
+  const handleSignOutClick = () => {
+    if (isCheckoutLocked) {
+      setPendingPath(null);
+      setPendingLogout(true);
+      setShowLeaveModal(true);
+    } else {
+      setIsLogoutModalOpen(true);
     }
   };
 
-  const confirmLeave = () => {
+  const confirmLeave = async () => {
+    if (pendingBookingId) {
+      try {
+        await fetchApi(`/bookings/${pendingBookingId}`, { method: 'DELETE' });
+      } catch {
+        // Ignore release error during navigation cleanup
+      }
+      dispatch(setPendingBookingId(null));
+      dispatch(clearSeats());
+    }
     dispatch(setCheckoutLocked(false));
     setShowLeaveModal(false);
-    if (pendingPath) navigate(pendingPath);
+
+    if (pendingLogout) {
+      setPendingLogout(false);
+      setIsLogoutModalOpen(true);
+    } else if (pendingPath) {
+      navigate(pendingPath);
+    }
     setPendingPath(null);
   };
 
   useEffect(() => {
-    // Pre-fetch data for search suggestions
-    getTrendingMovies().then(data => {
+    getTrendingMovies().then((data) => {
       setMoviesList(Array.isArray(data) ? data : []);
     });
-    getTheaters().then(data => {
+    getTheaters().then((data) => {
       setTheatersList(Array.isArray(data) ? data : []);
     });
   }, []);
 
   useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSuggestions([]);
-      return;
-    }
+    return () => {
+      if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => setIsScrolled(window.scrollY > 12);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const suggestions = useMemo(() => {
+    if (!searchQuery.trim()) return [];
     const lowerQuery = searchQuery.toLowerCase();
-    
+
     const matchedMovies = (moviesList || [])
-      .filter(m => m && m.title && m.title.toLowerCase().includes(lowerQuery))
-      .map(m => ({ ...m, title: m.title, type: 'Movie', link: `/movie/${m._id || m.id}` }));
-      
+      .filter((m) => m && m.title && m.title.toLowerCase().includes(lowerQuery))
+      .map((m) => ({
+        title: m.title,
+        subtitle: m.genre || 'Movie',
+        type: 'Movie',
+        link: `/movie/${m._id || m.id}`,
+        id: m._id || m.id,
+      }));
+
     const matchedTheaters = (theatersList || [])
-      .filter(t => t && t.name && t.name.toLowerCase().includes(lowerQuery))
-      .map(t => ({ ...t, title: t.name, type: 'Cinema', link: `/cinema/${t._id || t.id}/shows` }));
-      
-    // Extract unique locations/cities from theaters
+      .filter((t) => t && t.name && t.name.toLowerCase().includes(lowerQuery))
+      .map((t) => ({
+        title: t.name,
+        subtitle: t.location,
+        type: 'Cinema',
+        link: `/cinema/${t._id || t.id}/shows`,
+        id: t._id || t.id,
+      }));
+
     const matchedLocations = (theatersList || [])
-      .filter(t => t && t.location && t.location.toLowerCase().includes(lowerQuery))
-      .map(t => {
+      .filter((t) => t && t.location && t.location.toLowerCase().includes(lowerQuery))
+      .map((t) => {
         const parts = t.location.split(',');
         return parts[parts.length - 1].trim();
       });
-      
-    const uniqueLocations = [...new Set(matchedLocations)].filter(loc => loc && loc.toLowerCase().includes(lowerQuery));
-    
-    const locationSuggestions = uniqueLocations.map(loc => ({
+
+    const uniqueLocations = [...new Set(matchedLocations)].filter(
+      (loc) => loc && loc.toLowerCase().includes(lowerQuery)
+    );
+
+    const locationSuggestions = uniqueLocations.map((loc) => ({
       title: `Cinemas in ${loc}`,
-      type: 'City/Location',
-      link: `/cinemas?search=${encodeURIComponent(loc)}`
+      subtitle: 'Location',
+      type: 'Location',
+      link: `/cinemas?search=${encodeURIComponent(loc)}`,
+      id: loc,
     }));
-      
-    setSuggestions([...locationSuggestions, ...matchedMovies, ...matchedTheaters].slice(0, 6));
+
+    return [...matchedMovies, ...matchedTheaters, ...locationSuggestions].slice(0, 6);
   }, [searchQuery, moviesList, theatersList]);
 
   const handleSuggestionClick = (link) => {
+    if (!handleNavClick(null, link)) return;
     navigate(link);
-    setIsSearchOpen(false);
+    setIsSearchFocused(false);
     setSearchQuery('');
   };
 
   const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      // If user presses enter, maybe just navigate to the first suggestion or the generic movies page
-      if (suggestions.length > 0) {
-        handleSuggestionClick(suggestions[0].link);
-      } else {
-        navigate(`/movies?search=${encodeURIComponent(searchQuery.trim())}`);
-        setIsSearchOpen(false);
-        setSearchQuery('');
-      }
+    e?.preventDefault();
+    if (!searchQuery.trim()) return;
+    if (suggestions.length > 0) {
+      handleSuggestionClick(suggestions[0].link);
+    } else {
+      const target = `/movies?search=${encodeURIComponent(searchQuery.trim())}`;
+      if (!handleNavClick(null, target)) return;
+      navigate(target);
+      setIsSearchFocused(false);
+      setSearchQuery('');
     }
   };
-
-  useEffect(() => {
-    const handleScroll = () => setIsScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
 
   const navLinks = [
     { name: 'Home', path: '/' },
@@ -121,181 +189,387 @@ const Navbar = () => {
     { name: 'Cinemas', path: '/cinemas' },
   ];
 
+  const isStaff = ['admin', 'master_admin', 'theater_admin'].includes(user?.role);
+
   return (
-    <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${isScrolled ? 'bg-base/80 backdrop-blur-xl border-b border-surface py-3' : 'bg-transparent py-5'}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex-1 flex justify-start">
-            <Link to="/" onClick={(e) => handleNavClick(e, '/')} className="flex items-center space-x-3 group transition-transform duration-300 hover:scale-105">
-              <img src="/Logo.png" alt="MoviGo Logo" className="h-8 object-contain drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]" />
-            </Link>
-          </div>
+    <header
+      className="fixed top-0 left-0 right-0 z-50 h-16 transition-colors duration-200 border-b backdrop-blur-md"
+      style={{
+        backgroundColor: isScrolled ? 'var(--mg-nav-bg)' : 'var(--mg-nav-bg)',
+        borderColor: 'var(--mg-border)',
+      }}
+    >
+      <div className="max-w-7xl mx-auto h-full px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+        {/* Left: Brand + Primary Links */}
+        <div className="flex items-center gap-8">
+          <Link
+            to="/"
+            onClick={(e) => handleNavClick(e, '/')}
+            className="flex items-center shrink-0 focus:outline-none"
+          >
+            <img src="/Logo.png" alt="MoviGo" className="h-7 object-contain" />
+          </Link>
 
-          {/* Desktop Nav */}
-          <div className="hidden md:flex flex-1 justify-center items-center space-x-10">
-            {navLinks.map((link) => (
-              <Link
-                key={link.name}
-                to={link.path}
-                onClick={(e) => handleNavClick(e, link.path)}
-                className={`text-sm tracking-wide font-medium transition-colors ${location.pathname === link.path ? 'text-primary' : 'text-muted hover:text-white'}`}
-              >
-                {link.name}
-              </Link>
-            ))}
-          </div>
+          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
+            {navLinks.map((link) => {
+              const isActive = location.pathname === link.path;
+              return (
+                <Link
+                  key={link.name}
+                  to={link.path}
+                  onClick={(e) => handleNavClick(e, link.path)}
+                  className="px-3.5 py-2 rounded-lg text-sm font-medium transition-colors"
+                  style={{
+                    color: isActive ? 'var(--mg-ink)' : 'var(--mg-ink-2)',
+                    backgroundColor: isActive ? 'var(--mg-surface-2)' : 'transparent',
+                  }}
+                >
+                  {link.name}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
 
-          {/* Right Actions */}
-          <div className="hidden md:flex flex-1 justify-end items-center space-x-4">
-            <div className="relative">
-              <form 
-                onSubmit={handleSearch}
-                className={`flex items-center transition-all duration-300 overflow-hidden ${isSearchOpen ? 'w-64 bg-surface/80 border border-white/20 rounded-full px-3' : 'w-10 bg-transparent border-transparent'}`}
-              >
+        {/* Center/Right: Search + Theme + Account */}
+        <div className="hidden md:flex items-center gap-3 flex-1 justify-end max-w-xl">
+          {/* Persistent Compact Search Bar */}
+          <div className="relative flex-1 max-w-xs">
+            <form onSubmit={handleSearch} className="relative flex items-center">
+              <Search
+                className="w-4 h-4 absolute left-3 pointer-events-none"
+                style={{ color: 'var(--mg-ink-3)' }}
+              />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Search movies, cinemas, cities..."
+                value={searchQuery}
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => {
+                  blurTimeoutRef.current = setTimeout(() => setIsSearchFocused(false), 180);
+                }}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-lg py-2 pl-9 pr-8 text-sm outline-none transition-colors border"
+                style={{
+                  backgroundColor: 'var(--mg-input-bg)',
+                  borderColor: isSearchFocused ? 'var(--mg-accent)' : 'var(--mg-border)',
+                  color: 'var(--mg-ink)',
+                }}
+              />
+              {searchQuery && (
                 <button
                   type="button"
-                  onClick={() => isSearchOpen && searchQuery ? handleSearch(new Event('submit')) : setIsSearchOpen(!isSearchOpen)}
-                  className={`text-muted hover:text-white transition-colors cursor-pointer p-2 shrink-0 ${isSearchOpen ? 'text-primary' : ''}`}
+                  onClick={() => setSearchQuery('')}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 p-0.5 rounded"
+                  style={{ color: 'var(--mg-ink-3)' }}
                 >
-                  <Search className="w-5 h-5" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
-                <input
-                  type="text"
-                  placeholder="Search movies & cinemas..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className={`bg-transparent outline-none text-sm text-white placeholder-white/50 w-full transition-opacity duration-300 ${isSearchOpen ? 'opacity-100 px-2' : 'opacity-0 w-0'}`}
-                  autoFocus={isSearchOpen}
-                  onBlur={() => {
-                    // Delay hiding so clicks on suggestions can register
-                    setTimeout(() => {
-                      if (!searchQuery) setIsSearchOpen(false);
-                      setSuggestions([]);
-                    }, 200);
-                  }}
-                />
-              </form>
-              
-              {/* Search Suggestions Dropdown */}
-              {isSearchOpen && suggestions.length > 0 && (
-                <div className="absolute top-full right-0 mt-2 w-72 bg-base border border-white/10 rounded-2xl shadow-2xl py-2 z-[100] animate-in slide-in-from-top-2">
-                  {suggestions.map((item, idx) => (
-                    <div 
-                      key={`${item.type}-${item._id || item.id}-${idx}`}
-                      onClick={() => handleNavClick(null, item.link) || handleSuggestionClick(item.link)}
-                      className="flex flex-col px-4 py-2 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/5 last:border-b-0"
-                    >
-                      <span className="text-white text-sm font-medium truncate">{item.title || item.name}</span>
-                      <span className="text-xs text-primary">{item.type}</span>
-                    </div>
-                  ))}
-                </div>
               )}
-            </div>
-            {isAuthenticated ? (
-              <div className="relative group">
-                <button className="flex items-center space-x-2 text-white/90 hover:text-white transition-colors">
-                  {user?.profilePhoto ? (
-                    <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-primary/50" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/50 text-sm font-bold">
-                      {user?.name?.charAt(0) || 'U'}
-                    </div>
-                  )}
-                  <span className="text-sm font-medium hidden lg:block">{user?.name?.split(' ')[0]}</span>
-                </button>
+            </form>
 
-                {/* Secure Dropdown */}
-                <div className="absolute right-0 mt-2 w-48 bg-base border border-white/10 rounded-2xl shadow-xl py-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 transform origin-top-right group-hover:translate-y-0 translate-y-2 z-50">
-                  <Link to="/profile" onClick={(e) => handleNavClick(e, '/profile')} className="flex items-center w-full px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">
-                    <User className="w-4 h-4 mr-2" /> My Profile
-                  </Link>
-                  <Link to="/profile" onClick={(e) => handleNavClick(e, '/profile')} className="flex items-center w-full px-4 py-2.5 text-sm text-white/70 hover:text-white hover:bg-white/5 transition-colors">
-                    <Ticket className="w-4 h-4 mr-2" /> My Tickets
-                  </Link>
-                  {(user?.role === 'admin' || user?.role === 'theater_admin') && (
-                    <Link to="/admin" onClick={(e) => handleNavClick(e, '/admin')} className="flex items-center w-full px-4 py-2.5 text-sm text-primary/80 hover:text-primary hover:bg-primary/10 transition-colors">
-                      <span className="w-4 h-4 mr-2">🛡️</span> Admin Portal
-                    </Link>
-                  )}
-                  <div className="h-px bg-white/10 my-2"></div>
-                  <button onClick={() => isCheckoutLocked ? setShowLeaveModal(true) : setIsLogoutModalOpen(true)} className="flex items-center w-full px-4 py-2.5 text-sm text-red-500/70 hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                    <span className="w-4 h-4 mr-2">🚪</span> Sign Out
+            {isSearchFocused && suggestions.length > 0 && (
+              <div
+                className="absolute top-full left-0 right-0 mt-1.5 rounded-xl overflow-hidden py-1 z-[100]"
+                style={{
+                  backgroundColor: 'var(--mg-surface)',
+                  border: '1px solid var(--mg-border-strong)',
+                  boxShadow: 'var(--mg-shadow-lg)',
+                }}
+              >
+                {suggestions.map((item, idx) => (
+                  <button
+                    key={`${item.type}-${item.id}-${idx}`}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => handleSuggestionClick(item.link)}
+                    className="w-full text-left flex items-center justify-between px-3.5 py-2.5 text-sm transition-colors mg-hover cursor-pointer"
+                  >
+                    <div className="min-w-0 pr-3">
+                      <p className="font-medium truncate" style={{ color: 'var(--mg-ink)' }}>
+                        {item.title}
+                      </p>
+                      {item.subtitle && (
+                        <p className="text-xs truncate" style={{ color: 'var(--mg-ink-3)' }}>
+                          {item.subtitle}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className="text-[11px] font-semibold px-2 py-0.5 rounded shrink-0"
+                      style={{
+                        backgroundColor: 'var(--mg-surface-2)',
+                        color: 'var(--mg-ink-2)',
+                      }}
+                    >
+                      {item.type}
+                    </span>
                   </button>
-                </div>
+                ))}
               </div>
-            ) : (
-              <Link to="/login" onClick={(e) => handleNavClick(e, '/login')} className="flex items-center space-x-2 bg-surface hover:bg-white/10 border border-white/10 rounded-full px-5 py-2.5 transition-all backdrop-blur-md">
-                <User className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">Sign In</span>
-              </Link>
             )}
           </div>
 
-          {/* Mobile Actions */}
-          <div className="md:hidden flex-1 flex justify-end items-center space-x-2">
-            {isAuthenticated ? (
-              <Link to="/profile" onClick={(e) => handleNavClick(e, '/profile')} className="flex items-center text-white/90 hover:text-white transition-colors">
+          {/* Theme Switcher */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={isLightMode ? 'Switch to dark theme' : 'Switch to light theme'}
+            title={isLightMode ? 'Dark mode' : 'Light mode'}
+            className="p-2 rounded-lg border transition-colors cursor-pointer"
+            style={{
+              backgroundColor: 'var(--mg-surface)',
+              borderColor: 'var(--mg-border)',
+              color: 'var(--mg-ink-2)',
+            }}
+          >
+            {isLightMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
+          {/* Account Menu / Sign In */}
+          {isAuthenticated ? (
+            <div className="relative group">
+              <button
+                type="button"
+                className="flex items-center gap-2.5 py-1.5 px-2.5 rounded-lg border transition-colors cursor-pointer"
+                style={{
+                  backgroundColor: 'var(--mg-surface)',
+                  borderColor: 'var(--mg-border)',
+                  color: 'var(--mg-ink)',
+                }}
+              >
                 {user?.profilePhoto ? (
-                  <img src={user.profilePhoto} alt={user.name} className="w-8 h-8 rounded-full object-cover border border-primary/50" />
+                  <img
+                    src={user.profilePhoto}
+                    alt={user.name}
+                    className="w-6 h-6 rounded-full object-cover"
+                  />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center border border-primary/50 text-sm font-bold">
-                    {user?.name?.charAt(0) || 'U'}
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{ backgroundColor: 'var(--mg-accent)' }}
+                  >
+                    {user?.name?.charAt(0)?.toUpperCase() || 'U'}
                   </div>
                 )}
-              </Link>
-            ) : (
-              <Link to="/login" onClick={(e) => handleNavClick(e, '/login')} className="flex items-center text-primary bg-surface hover:bg-white/10 border border-white/10 rounded-full p-2 transition-all">
-                <User className="w-4 h-4" />
-              </Link>
-            )}
-            <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="text-white p-2">
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
+                <span className="text-sm font-medium max-w-[100px] truncate">
+                  {user?.name?.split(' ')[0]}
+                </span>
+              </button>
+
+              <div
+                className="absolute right-0 mt-1.5 w-52 rounded-xl py-1.5 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50"
+                style={{
+                  backgroundColor: 'var(--mg-surface)',
+                  border: '1px solid var(--mg-border-strong)',
+                  boxShadow: 'var(--mg-shadow-lg)',
+                }}
+              >
+                <div className="px-3.5 py-2 border-b" style={{ borderColor: 'var(--mg-border)' }}>
+                  <p className="text-xs font-semibold truncate" style={{ color: 'var(--mg-ink)' }}>
+                    {user?.name}
+                  </p>
+                  <p className="text-[11px] truncate" style={{ color: 'var(--mg-ink-3)' }}>
+                    {user?.email}
+                  </p>
+                </div>
+                <Link
+                  to="/profile"
+                  onClick={(e) => handleNavClick(e, '/profile')}
+                  className="flex items-center gap-2.5 px-3.5 py-2 text-sm transition-colors mg-hover"
+                  style={{ color: 'var(--mg-ink-2)' }}
+                >
+                  <User className="w-4 h-4" /> My Profile
+                </Link>
+                <Link
+                  to="/profile"
+                  onClick={(e) => handleNavClick(e, '/profile')}
+                  className="flex items-center gap-2.5 px-3.5 py-2 text-sm transition-colors mg-hover"
+                  style={{ color: 'var(--mg-ink-2)' }}
+                >
+                  <Ticket className="w-4 h-4" /> My Tickets
+                </Link>
+                {isStaff && (
+                  <Link
+                    to="/admin"
+                    onClick={(e) => handleNavClick(e, '/admin')}
+                    className="flex items-center gap-2.5 px-3.5 py-2 text-sm font-medium transition-colors mg-hover"
+                    style={{ color: 'var(--mg-accent)' }}
+                  >
+                    <Shield className="w-4 h-4" /> Admin Portal
+                  </Link>
+                )}
+                <div className="my-1 border-t" style={{ borderColor: 'var(--mg-border)' }} />
+                <button
+                  type="button"
+                  onClick={handleSignOutClick}
+                  className="flex items-center gap-2.5 w-full px-3.5 py-2 text-sm text-left transition-colors mg-hover cursor-pointer"
+                  style={{ color: 'var(--mg-danger)' }}
+                >
+                  <LogOut className="w-4 h-4" /> Sign Out
+                </button>
+              </div>
+            </div>
+          ) : (
+            <Link
+              to="/login"
+              onClick={(e) => handleNavClick(e, '/login')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-colors"
+              style={{ backgroundColor: 'var(--mg-accent)' }}
+            >
+              Sign In
+            </Link>
+          )}
+        </div>
+
+        {/* Mobile Controls */}
+        <div className="md:hidden flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            className="p-2 rounded-lg border"
+            style={{
+              backgroundColor: 'var(--mg-surface)',
+              borderColor: 'var(--mg-border)',
+              color: 'var(--mg-ink-2)',
+            }}
+          >
+            {isLightMode ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
+          </button>
+
+          {isAuthenticated ? (
+            <Link
+              to="/profile"
+              onClick={(e) => handleNavClick(e, '/profile')}
+              className="flex items-center"
+            >
+              {user?.profilePhoto ? (
+                <img
+                  src={user.profilePhoto}
+                  alt={user.name}
+                  className="w-8 h-8 rounded-full object-cover border"
+                  style={{ borderColor: 'var(--mg-border-strong)' }}
+                />
+              ) : (
+                <div
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ backgroundColor: 'var(--mg-accent)' }}
+                >
+                  {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                </div>
+              )}
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              onClick={(e) => handleNavClick(e, '/login')}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+              style={{ backgroundColor: 'var(--mg-accent)' }}
+            >
+              Sign In
+            </Link>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label="Toggle menu"
+            className="p-2 rounded-lg"
+            style={{ color: 'var(--mg-ink)' }}
+          >
+            {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
       </div>
 
-      {/* Mobile Menu */}
+      {/* Mobile Drawer */}
       {isMobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 bg-base border-b border-surface backdrop-blur-2xl">
-          <div className="px-4 py-4 space-y-4">
+        <div
+          className="md:hidden absolute top-16 left-0 right-0 border-b px-4 py-4 space-y-3"
+          style={{
+            backgroundColor: 'var(--mg-surface)',
+            borderColor: 'var(--mg-border-strong)',
+            boxShadow: 'var(--mg-shadow-lg)',
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              handleSearch(e);
+              setIsMobileMenuOpen(false);
+            }}
+            className="relative flex items-center"
+          >
+            <Search
+              className="w-4 h-4 absolute left-3 pointer-events-none"
+              style={{ color: 'var(--mg-ink-3)' }}
+            />
+            <input
+              type="text"
+              placeholder="Search movies & cinemas..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="mg-input pl-9"
+            />
+          </form>
+
+          <div className="flex flex-col gap-1">
             {navLinks.map((link) => (
               <Link
                 key={link.name}
                 to={link.path}
-                onClick={(e) => { handleNavClick(e, link.path); setIsMobileMenuOpen(false); }}
-                className="block text-base font-medium text-white"
+                onClick={(e) => {
+                  handleNavClick(e, link.path);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="px-3 py-2.5 rounded-lg text-sm font-medium"
+                style={{
+                  color: location.pathname === link.path ? 'var(--mg-accent)' : 'var(--mg-ink)',
+                  backgroundColor:
+                    location.pathname === link.path ? 'var(--mg-accent-soft)' : 'transparent',
+                }}
               >
                 {link.name}
               </Link>
             ))}
+
             {isAuthenticated && (
               <>
-                <div className="h-px bg-white/10 my-2"></div>
+                <div className="my-1 border-t" style={{ borderColor: 'var(--mg-border)' }} />
                 <Link
                   to="/profile"
-                  onClick={(e) => { handleNavClick(e, '/profile'); setIsMobileMenuOpen(false); }}
-                  className="block text-base font-medium text-white"
+                  onClick={(e) => {
+                    handleNavClick(e, '/profile');
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="px-3 py-2.5 rounded-lg text-sm font-medium"
+                  style={{ color: 'var(--mg-ink)' }}
                 >
-                  View Profile
+                  My Profile &amp; Tickets
                 </Link>
-                {(user?.role === 'admin' || user?.role === 'theater_admin') && (
+                {isStaff && (
                   <Link
                     to="/admin"
-                    onClick={(e) => { handleNavClick(e, '/admin'); setIsMobileMenuOpen(false); }}
-                    className="block text-base font-medium text-primary"
+                    onClick={(e) => {
+                      handleNavClick(e, '/admin');
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="px-3 py-2.5 rounded-lg text-sm font-semibold"
+                    style={{ color: 'var(--mg-accent)' }}
                   >
                     Admin Portal
                   </Link>
                 )}
                 <button
+                  type="button"
                   onClick={() => {
                     setIsMobileMenuOpen(false);
-                    isCheckoutLocked ? setShowLeaveModal(true) : setIsLogoutModalOpen(true);
+                    handleSignOutClick();
                   }}
-                  className="block text-base font-medium text-red-500 w-full text-left"
+                  className="px-3 py-2.5 rounded-lg text-sm font-medium text-left"
+                  style={{ color: 'var(--mg-danger)' }}
                 >
                   Sign Out
                 </button>
@@ -305,39 +579,47 @@ const Navbar = () => {
         </div>
       )}
 
-      <Modal 
-        isOpen={showLeaveModal} 
-        onClose={() => setShowLeaveModal(false)} 
-        title="Leave Checkout?"
+      {/* Checkout Leave Confirmation Modal */}
+      <Modal
+        isOpen={showLeaveModal}
+        onClose={() => {
+          setShowLeaveModal(false);
+          setPendingLogout(false);
+          setPendingPath(null);
+        }}
+        title="Release Selected Seats?"
         className="max-w-md"
       >
-        <div className="text-center p-4">
-           <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <AlertTriangle className="w-8 h-8 text-primary" />
-           </div>
-           <h3 className="text-xl font-bold text-white mb-4">Secure Lock Active</h3>
-           <p className="text-muted text-sm mb-8 leading-relaxed">
-             Your seats are currently locked for your booking. Leaving this page will release them to other users.
-           </p>
-           <div className="flex flex-col gap-3">
-              <Button onClick={() => setShowLeaveModal(false)} className="w-full">
-                 Stay & Complete Payment
-              </Button>
-              <button 
-                onClick={confirmLeave} 
-                className="py-3 text-xs font-black uppercase tracking-widest text-muted hover:text-white transition-colors"
-              >
-                 Yes, Release Seats
-              </button>
-           </div>
+        <div className="text-center py-2">
+          <div
+            className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4"
+            style={{ backgroundColor: 'var(--mg-accent-soft)', color: 'var(--mg-accent)' }}
+          >
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <p className="text-sm mb-6 leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+            Your seats are temporarily held for your booking. Leaving checkout will release them for other moviegoers.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              onClick={() => {
+                setShowLeaveModal(false);
+                setPendingLogout(false);
+                setPendingPath(null);
+              }}
+              className="flex-1"
+            >
+              Stay on Checkout
+            </Button>
+            <Button variant="secondary" onClick={confirmLeave} className="flex-1">
+              Release &amp; Leave
+            </Button>
+          </div>
         </div>
       </Modal>
 
-      <LogoutModal 
-        isOpen={isLogoutModalOpen} 
-        onClose={() => setIsLogoutModalOpen(false)} 
-      />
-    </nav>
+      <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} />
+    </header>
   );
 };
 

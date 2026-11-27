@@ -1,6 +1,9 @@
 const nodemailer = require('nodemailer');
+const crypto = require('crypto');
 
-// Create reusable transporter — with FULL DEBUGGING for Render
+const hasEmailCredentials = Boolean(process.env.EMAIL_USER && process.env.EMAIL_PASS);
+
+// Create reusable transporter
 const transporter = nodemailer.createTransport({
   host: 'smtp.gmail.com',
   port: 465,
@@ -13,25 +16,35 @@ const transporter = nodemailer.createTransport({
     rejectUnauthorized: false,
     minVersion: 'TLSv1.2'
   },
-  debug: true,
-  logger: true,
   connectionTimeout: 10000,
   greetingTimeout: 10000,
   socketTimeout: 10000
 });
-// Verify connection configuration immediately
-console.log('📬 Starting Mailer Verification (Port 465)...');
-transporter.verify((error, success) => {
-  if (error) {
-    console.error('❌ Mailer Connection Error Details:', error);
-  } else {
-    console.log('✅ Mailer ready for production (Port 465)');
-  }
-});
-// Generate a 6-digit OTP
+
+if (hasEmailCredentials) {
+  console.log('📬 Starting Mailer Verification (Port 465)...');
+  transporter.verify((error) => {
+    if (error) {
+      console.error('❌ Mailer Connection Error Details:', error.message);
+    } else {
+      console.log('✅ Mailer ready for production (Port 465)');
+    }
+  });
+}
+
+// Generate a cryptographically secure 6-digit OTP
 const generateOTP = () => {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return crypto.randomInt(100000, 1000000).toString();
 };
+
+const escapeHtml = (str = '') =>
+  String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 // Build premium HTML email template
 const buildOtpEmail = (otp, purpose, userName = '') => {
   const isReset = purpose === 'reset';
@@ -40,7 +53,8 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
     ? 'Use the code below to reset your password. If you didn\'t request this, you can safely ignore this email.'
     : 'Welcome to MoviGo! Use the code below to complete your registration.';
   const accentColor = isReset ? '#8b5cf6' : '#f43f5e';
-  const greeting = userName ? `Hey ${userName},` : 'Hey there,';
+  const safeName = escapeHtml(userName);
+  const greeting = safeName ? `Hey ${safeName},` : 'Hey there,';
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -128,6 +142,11 @@ const buildOtpEmail = (otp, purpose, userName = '') => {
 };
 // Send OTP email
 const sendOtpEmail = async (email, otp, purpose, userName = '') => {
+  if (!hasEmailCredentials) {
+    console.log(`🔑 DEV MODE OTP FOR ${email} (${purpose}): [ ${otp} ] (EMAIL_USER/EMAIL_PASS not configured)`);
+    return;
+  }
+
   const isReset = purpose === 'reset';
   const subject = isReset
     ? '🔐 MoviGo — Password Reset Code'

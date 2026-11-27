@@ -1,9 +1,15 @@
 const mongoose = require('mongoose');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const LOCAL_URI = 'mongodb://127.0.0.1:27017/moviegoo';
-const ATLAS_URI = 'mongodb+srv://Harshil:Hasu%40200430@movigo.wshwpzp.mongodb.net/MoviGo?appName=MoviGo';
+const LOCAL_URI = process.env.LOCAL_MONGO_URI || 'mongodb://127.0.0.1:27017/moviegoo';
+const ATLAS_URI = process.env.MONGO_URI;
 
 async function migrate() {
+  if (!ATLAS_URI) {
+    console.error('❌ MONGO_URI is not set in backend/.env');
+    process.exit(1);
+  }
   try {
     console.log('Connecting to Local DB...');
     const localConn = await mongoose.createConnection(LOCAL_URI).asPromise();

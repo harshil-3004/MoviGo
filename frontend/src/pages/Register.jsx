@@ -1,10 +1,25 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { Mail, Lock, UserPlus, User, Phone, Image as ImageIcon, ShieldCheck, ArrowRight, Loader2, Eye, EyeOff } from 'lucide-react';
+import {
+  Mail,
+  Lock,
+  User,
+  Phone,
+  Image as ImageIcon,
+  ShieldCheck,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  Film,
+  ChevronLeft,
+  CheckCircle2,
+} from 'lucide-react';
 import Button from '../components/common/Button';
 import { login } from '../store/authSlice';
-import { fetchApi } from '../services/api';
+import { fetchApi, uploadFile } from '../services/api';
+import { validatePasswordStrength } from '../utils/bookingUtils';
 
 const OTP_LENGTH = 6;
 
@@ -12,7 +27,7 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
   const inputRefs = useRef([]);
 
   const handleChange = (index, value) => {
-    if (!/^\d*$/.test(value)) return; // Only allow digits
+    if (!/^\d*$/.test(value)) return;
     const newOtp = [...otp];
     newOtp[index] = value.slice(-1);
     setOtp(newOtp);
@@ -31,14 +46,16 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
     const newOtp = [...otp];
-    pasted.split('').forEach((char, i) => { newOtp[i] = char; });
+    pasted.split('').forEach((char, i) => {
+      newOtp[i] = char;
+    });
     setOtp(newOtp);
     const nextIndex = Math.min(pasted.length, OTP_LENGTH - 1);
     inputRefs.current[nextIndex]?.focus();
   };
 
   return (
-    <div className="flex gap-2.5 justify-center">
+    <div className="flex gap-2 sm:gap-2.5 justify-center">
       {otp.map((digit, index) => (
         <input
           key={index}
@@ -51,12 +68,13 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
           onChange={(e) => handleChange(index, e.target.value)}
           onKeyDown={(e) => handleKeyDown(index, e)}
           onPaste={index === 0 ? handlePaste : undefined}
-          className={`w-12 h-14 text-center text-xl font-bold rounded-xl border transition-all focus:outline-none
-            ${digit
-              ? 'bg-primary/10 border-primary text-white shadow-[0_0_15px_rgba(244,63,94,0.15)]'
-              : 'bg-black/20 border-white/10 text-white/60'
-            }
-            focus:border-primary focus:bg-primary/5 disabled:opacity-50`}
+          aria-label={`OTP digit ${index + 1}`}
+          className="w-11 h-12 sm:w-12 sm:h-14 text-center text-lg font-mono font-bold rounded-lg border transition-colors focus:outline-none disabled:opacity-50"
+          style={{
+            backgroundColor: digit ? 'var(--mg-accent-soft)' : 'var(--mg-input-bg)',
+            borderColor: digit ? 'var(--mg-accent)' : 'var(--mg-border-strong)',
+            color: 'var(--mg-ink)',
+          }}
         />
       ))}
     </div>
@@ -64,7 +82,7 @@ const OtpInputGroup = ({ otp, setOtp, disabled }) => {
 };
 
 const Register = () => {
-  const [step, setStep] = useState(1); // 1: Form, 2: OTP Verify
+  const [step, setStep] = useState(1); // 1: Form, 2: OTP verify
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [mobile, setMobile] = useState('');
@@ -78,55 +96,50 @@ const Register = () => {
   const [isSendingOtp, setIsSendingOtp] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [apiError, setApiError] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  
+
   const navigate = useNavigate();
+  const location = useLocation();
   const dispatch = useDispatch();
 
-  // Cooldown timer for resend
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   useEffect(() => {
     if (cooldown <= 0) return;
-    const timer = setTimeout(() => setCooldown(c => c - 1), 1000);
+    const timer = setTimeout(() => setCooldown((c) => c - 1), 1000);
     return () => clearTimeout(timer);
   }, [cooldown]);
 
   const handlePasswordBlur = () => {
     if (!password) return;
-    const minLength = password.length >= 6;
-    const hasUppercase = /[A-Z]/.test(password);
-    const hasSymbol = /[!@#$%^&*(),.?":{}|<>_]/.test(password);
-    const hasAlphabet = /[a-zA-Z]/.test(password);
-    const hasNumber = /\d/.test(password);
-
-    if (!minLength || !hasUppercase || !hasSymbol || !hasAlphabet || !hasNumber) {
-      setPasswordError("Password must be at least 6 characters, contain 1 uppercase letter, 1 unique symbol, and 1 number.");
+    if (!validatePasswordStrength(password)) {
+      setPasswordError(
+        'Password must be at least 6 characters, with 1 uppercase letter, 1 symbol, and 1 number.'
+      );
     } else {
       setPasswordError('');
     }
   };
 
-  const handleSendOtp = async () => {
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
     setApiError('');
-    
-    // Validate form first
+    setPasswordError('');
+
     if (!name || !email || !mobile || !password || !confirmPassword) {
       setApiError('Please fill in all required fields.');
       return;
     }
     if (password !== confirmPassword) {
-      setPasswordError("Passwords do not match!");
+      setPasswordError('Passwords do not match.');
       return;
     }
-
-    const minLength = password.length >= 6;
-    const hasUppercase = /[A-Z]/.test(password);
-    const hasSymbol = /[!@#$%^&*(),.?":{}|<>_]/.test(password);
-    const hasAlphabet = /[a-zA-Z]/.test(password);
-    const hasNumber = /\d/.test(password);
-
-    if (!minLength || !hasUppercase || !hasSymbol || !hasAlphabet || !hasNumber) {
-      setPasswordError("Password must be at least 6 characters, contain 1 uppercase letter, 1 unique symbol, and 1 number.");
+    if (!validatePasswordStrength(password)) {
+      setPasswordError(
+        'Password must be at least 6 characters, with 1 uppercase letter, 1 symbol, and 1 number.'
+      );
       return;
     }
 
@@ -134,13 +147,12 @@ const Register = () => {
     try {
       await fetchApi('/otp/send', {
         method: 'POST',
-        body: JSON.stringify({ email, purpose: 'registration' })
+        body: JSON.stringify({ email, purpose: 'registration' }),
       });
-      setOtpSent(true);
       setStep(2);
       setCooldown(60);
     } catch (err) {
-      setApiError(err.message || 'Failed to send OTP');
+      setApiError(err.message || 'Failed to send verification code');
     } finally {
       setIsSendingOtp(false);
     }
@@ -153,12 +165,12 @@ const Register = () => {
     try {
       await fetchApi('/otp/send', {
         method: 'POST',
-        body: JSON.stringify({ email, purpose: 'registration' })
+        body: JSON.stringify({ email, purpose: 'registration' }),
       });
       setOtp(Array(OTP_LENGTH).fill(''));
       setCooldown(60);
     } catch (err) {
-      setApiError(err.message || 'Failed to resend OTP');
+      setApiError(err.message || 'Failed to resend code');
     } finally {
       setIsSendingOtp(false);
     }
@@ -168,44 +180,45 @@ const Register = () => {
     e.preventDefault();
     const otpString = otp.join('');
     if (otpString.length !== OTP_LENGTH) {
-      setApiError('Please enter the complete 6-digit OTP.');
+      setApiError('Please enter the complete 6-digit verification code.');
       return;
     }
 
     setIsLoading(true);
     setApiError('');
-    
+
     try {
-      let profilePhotoUrl = null;
+      const data = await fetchApi('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ name, email, mobile, password, otp: otpString }),
+      });
 
-      // Handle Image Upload first if file exists
-      if (profilePhotoFile) {
-        const formData = new FormData();
-        formData.append('image', profilePhotoFile);
+      let finalUser = data.user;
 
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData
-        });
-        
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          profilePhotoUrl = uploadData.url;
+      if (profilePhotoFile && data.token) {
+        try {
+          const uploadData = await uploadFile(profilePhotoFile, data.token);
+          if (uploadData.url) {
+            const profileRes = await fetch('/api/users/profile', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${data.token}`,
+              },
+              body: JSON.stringify({ profilePhoto: uploadData.url }),
+            });
+            if (profileRes.ok) {
+              const profileData = await profileRes.json();
+              finalUser = profileData.user || { ...finalUser, profilePhoto: uploadData.url };
+            }
+          }
+        } catch (uploadErr) {
+          console.warn('Optional profile photo upload failed:', uploadErr);
         }
       }
 
-      const data = await fetchApi('/auth/register', {
-        method: 'POST',
-        body: JSON.stringify({ name, email, mobile, password, profilePhoto: profilePhotoUrl, otp: otpString })
-      });
-
-      dispatch(login({
-        ...data.user,
-        email: email,
-        token: data.token
-      }));
-      
-      navigate('/');
+      dispatch(login({ ...finalUser, token: data.token }));
+      navigate(location.state?.from || '/');
     } catch (err) {
       setApiError(err.message || 'Registration failed');
     } finally {
@@ -214,209 +227,289 @@ const Register = () => {
   };
 
   return (
-    <div className="w-full min-h-screen flex -mt-24 pb-20 justify-center items-center relative">
-      
-      {/* Cinematic Background */}
-      <div className="absolute inset-0 z-0">
-        <img src="https://images.unsplash.com/photo-1536440136628-849c177e76a1?auto=format&fit=crop&w=2560&q=80" alt="cinema" className="w-full h-full object-cover opacity-20 mix-blend-screen" />
-        <div className="absolute inset-0 bg-base/80 backdrop-blur-[2px]"></div>
-        <div className="absolute inset-0 bg-gradient-to-t from-base via-transparent to-base/80"></div>
-      </div>
+    <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+      <div
+        className="grid grid-cols-1 lg:grid-cols-12 rounded-2xl border overflow-hidden"
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          borderColor: 'var(--mg-border)',
+          boxShadow: 'var(--mg-shadow-md)',
+        }}
+      >
+        {/* Left Editorial Panel (Desktop) */}
+        <div
+          className="hidden lg:flex lg:col-span-5 flex-col justify-between p-10 border-r"
+          style={{
+            backgroundColor: 'var(--mg-surface-2)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <div>
+            <Link to="/" className="inline-flex items-center gap-2 font-display font-bold text-xl" style={{ color: 'var(--mg-ink)' }}>
+              <Film className="w-5 h-5" style={{ color: 'var(--mg-accent)' }} />
+              MoviGo
+            </Link>
+            <h2 className="text-2xl font-display font-bold mt-8 mb-3 leading-snug" style={{ color: 'var(--mg-ink)' }}>
+              Join MoviGo in under a minute.
+            </h2>
+            <p className="text-sm leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+              Create a verified account to book seats across partner cinemas, save payment preferences, and earn loyalty rewards.
+            </p>
+          </div>
 
-      <div className="relative z-10 w-full max-w-md px-4 mt-20">
-        
-        {/* Logo/Brand */}
-        <div className="text-center mb-8">
-           <Link to="/" className="inline-block text-4xl font-bold font-outfit tracking-tight mb-2">
-             Movie<span className="text-primary drop-shadow-[0_0_15px_rgba(244,63,94,0.6)] animate-pulse">Goo</span>
-           </Link>
-           <p className="text-white/60 text-sm">
-             {step === 1 ? 'Join the club. Get early tickets & rewards.' : 'Enter the verification code sent to your email.'}
-           </p>
+          <div className="space-y-3 pt-8 text-xs" style={{ color: 'var(--mg-ink-2)' }}>
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-success)' }} />
+              <span>Instant digital QR pass &amp; PDF downloads</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-success)' }} />
+              <span>Waitlist alerts &amp; early Inner Circle booking access</span>
+            </div>
+            <div className="flex items-center gap-2.5">
+              <CheckCircle2 className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-success)' }} />
+              <span>Zero spam — email verification only</span>
+            </div>
+          </div>
         </div>
 
-        {/* Step Indicator */}
-        <div className="flex items-center justify-center gap-3 mb-6">
-          <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-all ${step >= 1 ? 'text-primary' : 'text-white/30'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black transition-all ${step >= 1 ? 'bg-primary text-white' : 'bg-white/10 text-white/30'}`}>1</div>
-            Details
-          </div>
-          <div className={`w-8 h-px transition-all ${step >= 2 ? 'bg-primary' : 'bg-white/10'}`}></div>
-          <div className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest transition-all ${step >= 2 ? 'text-primary' : 'text-white/30'}`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-black transition-all ${step >= 2 ? 'bg-primary text-white' : 'bg-white/10 text-white/30'}`}>2</div>
-            Verify
-          </div>
-        </div>
-
-        {/* Register Card */}
-        <div className="bg-surface/60 backdrop-blur-3xl border border-white/10 rounded-3xl p-8 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-          {apiError && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-semibold flex items-center justify-between">
-              {apiError}
-              <button type="button" onClick={() => setApiError('')} className="text-red-400 hover:text-white">&times;</button>
-            </div>
-          )}
-
-          {step === 1 ? (
-            /* Step 1: User Details */
-            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="space-y-4">
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input 
-                    type="text" required placeholder="Full Name" value={name}
-                    onChange={(e) => setName(e.target.value)} autoComplete="off"
-                    className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all"
-                  />
-                </div>
-
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input 
-                    type="email" required placeholder="Email address" value={email}
-                    onChange={(e) => setEmail(e.target.value)} autoComplete="off"
-                    className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all"
-                  />
-                </div>
-
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                  <input 
-                    type="tel" required placeholder="Mobile Number" value={mobile}
-                    onChange={(e) => setMobile(e.target.value)} autoComplete="off"
-                    className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-4 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all"
-                  />
-                </div>
-
-                <div className="relative flex items-center bg-black/20 border border-white/10 rounded-xl py-2 pl-4 pr-4 transition-all focus-within:border-primary focus-within:bg-white/5">
-                  <ImageIcon className="w-5 h-5 text-white/40 mr-3 flex-shrink-0" />
-                  <div className="w-full flex items-center justify-between">
-                    <span className="text-white/40 text-sm truncate max-w-[150px]">{profilePhotoFile ? profilePhotoFile.name : 'Profile Photo (Optional)'}</span>
-                    <label className="cursor-pointer bg-white/10 hover:bg-white/20 text-white text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap">
-                      Browse
-                      <input 
-                        type="file" accept="image/*" className="hidden"
-                        onChange={(e) => { if (e.target.files[0]) setProfilePhotoFile(e.target.files[0]); }}
-                      />
-                    </label>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                    <input 
-                      type={showPassword ? "text" : "password"} required placeholder="Create Password" value={password}
-                      onChange={(e) => setPassword(e.target.value)} onBlur={handlePasswordBlur}
-                      autoComplete="new-password"
-                      className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-12 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all text-sm"
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/40" />
-                    <input 
-                      type={showConfirmPassword ? "text" : "password"} required placeholder="Confirm Password" value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)} onBlur={handlePasswordBlur}
-                      onPaste={(e) => e.preventDefault()} autoComplete="new-password"
-                      className="w-full bg-black/20 border border-white/10 rounded-xl py-3 pl-12 pr-12 text-white placeholder:text-white/40 focus:outline-none focus:border-primary focus:bg-white/5 transition-all text-sm"
-                    />
-                    <button 
-                      type="button" 
-                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white transition-colors"
-                    >
-                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                </div>
-                {passwordError && (
-                  <div className="text-red-400 text-xs font-semibold px-2">{passwordError}</div>
-                )}
-              </div>
-
-              <Button 
-                type="button"
-                onClick={handleSendOtp}
-                className="w-full shadow-[0_0_20px_rgba(244,63,94,0.3)] flex justify-center py-3.5"
-                disabled={isSendingOtp}
-              >
-                {isSendingOtp ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <ArrowRight className="w-5 h-5 mr-2" />
-                    Verify Email & Continue
-                  </>
-                )}
-              </Button>
-            </div>
-          ) : (
-            /* Step 2: OTP Verification */
-            <form onSubmit={handleRegister} className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-              <div className="text-center">
-                <div className="w-16 h-16 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                  <ShieldCheck className="w-8 h-8 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold text-white mb-2">Check Your Email</h3>
-                <p className="text-white/50 text-sm">We sent a 6-digit code to <span className="text-primary font-bold">{email}</span></p>
-              </div>
-
-              <OtpInputGroup otp={otp} setOtp={setOtp} disabled={isLoading} />
-
-              <div className="text-center">
-                {cooldown > 0 ? (
-                  <p className="text-white/30 text-xs">Resend available in <span className="text-primary font-bold">{cooldown}s</span></p>
-                ) : (
-                  <button 
-                    type="button" onClick={handleResendOtp} disabled={isSendingOtp}
-                    className="text-primary text-xs font-bold hover:text-white transition-colors cursor-pointer"
-                  >
-                    {isSendingOtp ? 'Sending...' : 'Resend Code'}
-                  </button>
-                )}
-              </div>
-
-              <Button 
-                type="submit"
-                className="w-full shadow-[0_0_20px_rgba(244,63,94,0.3)] flex justify-center py-3.5"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                ) : (
-                  <>
-                    <UserPlus className="w-5 h-5 mr-2" />
-                    Create Account
-                  </>
-                )}
-              </Button>
-
-              <button 
-                type="button" 
-                onClick={() => { setStep(1); setOtp(Array(OTP_LENGTH).fill('')); setApiError(''); }}
-                className="w-full text-center text-sm text-muted hover:text-white transition-colors cursor-pointer"
-              >
-                ← Go back & edit details
-              </button>
-            </form>
-          )}
-
-          {step === 1 && (
-            <div className="mt-8 pt-6 border-t border-white/10 text-center">
-              <p className="text-white/60 text-sm">
-                Already have an account? <Link to="/login" className="text-white font-bold hover:text-primary transition-colors hover:underline">Log in</Link>
+        {/* Right Form Panel */}
+        <div className="lg:col-span-7 p-6 sm:p-10 md:p-12">
+          <div className="max-w-md mx-auto">
+            <div className="mb-7">
+              {step === 2 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    setApiError('');
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold mb-3 cursor-pointer hover:underline"
+                  style={{ color: 'var(--mg-ink-2)' }}
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  Edit details
+                </button>
+              )}
+              <h1 className="text-2xl sm:text-3xl font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+                {step === 1 ? 'Create your account' : 'Verify your email'}
+              </h1>
+              <p className="text-sm mt-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                {step === 1
+                  ? 'Fill in your details below to receive a 6-digit verification code.'
+                  : `Enter the 6-digit code sent to ${email}.`}
               </p>
             </div>
-          )}
-        </div>
 
+            {apiError && (
+              <div
+                className="mb-5 px-4 py-3 rounded-lg border text-sm font-medium flex items-center gap-2"
+                style={{
+                  backgroundColor: 'var(--mg-danger-soft)',
+                  borderColor: 'var(--mg-danger)',
+                  color: 'var(--mg-danger)',
+                }}
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{apiError}</span>
+              </div>
+            )}
+
+            {step === 1 ? (
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                    Full Name
+                  </label>
+                  <div className="relative">
+                    <User className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Riya Sharma"
+                      className="mg-input w-full pl-10 pr-4 py-2.5 rounded-lg text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                      Email Address
+                    </label>
+                    <div className="relative">
+                      <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                      <input
+                        type="email"
+                        required
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="mg-input w-full pl-10 pr-3 py-2.5 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                      Mobile Number
+                    </label>
+                    <div className="relative">
+                      <Phone className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                      <input
+                        type="tel"
+                        required
+                        value={mobile}
+                        onChange={(e) => setMobile(e.target.value)}
+                        placeholder="+91 98765 43210"
+                        className="mg-input w-full pl-10 pr-3 py-2.5 rounded-lg text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                      Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        value={password}
+                        onChange={(e) => {
+                          setPassword(e.target.value);
+                          if (passwordError) setPasswordError('');
+                        }}
+                        onBlur={handlePasswordBlur}
+                        placeholder="Min 6 chars"
+                        className="mg-input w-full pl-10 pr-10 py-2.5 rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((v) => !v)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                        style={{ color: 'var(--mg-ink-3)' }}
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                      Confirm Password
+                    </label>
+                    <div className="relative">
+                      <Lock className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--mg-ink-3)' }} />
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        required
+                        value={confirmPassword}
+                        onChange={(e) => {
+                          setConfirmPassword(e.target.value);
+                          if (passwordError) setPasswordError('');
+                        }}
+                        placeholder="Repeat password"
+                        className="mg-input w-full pl-10 pr-10 py-2.5 rounded-lg text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((v) => !v)}
+                        aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-1 cursor-pointer"
+                        style={{ color: 'var(--mg-ink-3)' }}
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[11px]" style={{ color: 'var(--mg-ink-3)' }}>
+                  Must contain 6+ characters with at least 1 uppercase letter, 1 number, and 1 special symbol.
+                </p>
+
+                {passwordError && (
+                  <p className="text-xs font-medium" style={{ color: 'var(--mg-danger)' }}>
+                    {passwordError}
+                  </p>
+                )}
+
+                <div>
+                  <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--mg-ink-2)' }}>
+                    Profile Photo <span style={{ color: 'var(--mg-ink-3)' }}>(Optional)</span>
+                  </label>
+                  <label
+                    className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg border border-dashed cursor-pointer text-xs transition-colors"
+                    style={{
+                      backgroundColor: 'var(--mg-input-bg)',
+                      borderColor: 'var(--mg-border-strong)',
+                      color: 'var(--mg-ink-2)',
+                    }}
+                  >
+                    <ImageIcon className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-ink-3)' }} />
+                    <span className="truncate">
+                      {profilePhotoFile ? profilePhotoFile.name : 'Choose JPG, PNG, or WebP photo'}
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setProfilePhotoFile(e.target.files?.[0] || null)}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+
+                <Button type="submit" size="lg" className="w-full mt-2" isLoading={isSendingOtp}>
+                  Continue &amp; Verify Email
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleRegister} className="space-y-6">
+                <OtpInputGroup otp={otp} setOtp={setOtp} disabled={isLoading} />
+
+                <Button type="submit" size="lg" className="w-full" isLoading={isLoading}>
+                  <ShieldCheck className="w-4 h-4" />
+                  Create Account
+                </Button>
+
+                <div className="flex items-center justify-center text-xs">
+                  <button
+                    type="button"
+                    onClick={handleResendOtp}
+                    disabled={cooldown > 0 || isSendingOtp}
+                    className="font-semibold cursor-pointer disabled:opacity-50 hover:underline"
+                    style={{ color: 'var(--mg-accent)' }}
+                  >
+                    {cooldown > 0 ? `Resend code in ${cooldown}s` : 'Resend verification code'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            <div
+              className="mt-7 pt-6 border-t text-center text-sm"
+              style={{ borderColor: 'var(--mg-border)', color: 'var(--mg-ink-2)' }}
+            >
+              Already have an account?{' '}
+              <Link
+                to="/login"
+                state={location.state}
+                className="font-semibold hover:underline"
+                style={{ color: 'var(--mg-accent)' }}
+              >
+                Sign in
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

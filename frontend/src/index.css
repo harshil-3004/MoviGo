@@ -1,115 +1,319 @@
 @import "tailwindcss";
 
-.light-theme {
-  --color-white: #1f2937;
-  --color-black: #ffffff;
-  --color-base: #f3f4f6;
-  --color-surface: rgba(0, 0, 0, 0.05);
-  --color-muted: #6b7280;
-  
-  --theme-border: rgba(0, 0, 0, 0.1);
-  --theme-surface-darker: rgba(0, 0, 0, 0.05);
-}
-
-@theme {
-  --color-base: #0B0C10;
-  --color-surface: rgba(255, 255, 255, 0.05);
-  --color-primary: #F43F5E;
-  --color-secondary: #8B5CF6;
-  --color-muted: #9CA3AF;
-  
-  /* Bind Tailwind's white/black to these variables so light mode overrides work */
-  --color-white: #ffffff;
-  --color-black: #000000;
-  
-  --font-inter: 'Inter', sans-serif;
-  --font-outfit: 'Outfit', sans-serif;
-}
-
-body {
-  background-color: var(--color-base);
-  color: var(--color-white);
-  margin: 0;
-  font-family: var(--font-inter);
-  overflow-x: hidden;
-  -webkit-font-smoothing: antialiased;
-}
-
-/* Custom properties for explicit usages not covered by Tailwind's standard classes */
+/* ==========================================================================
+   MOVIGO DESIGN SYSTEM TOKENS
+   ========================================================================== */
 :root {
-  --theme-border: rgba(255, 255, 255, 0.1);
-  --theme-surface-darker: rgba(0, 0, 0, 0.4);
+  /* Dark Cinema Surfaces (Default) */
+  --mg-bg: #0e0f12;
+  --mg-surface: #16181d;
+  --mg-surface-2: #1e2128;
+  --mg-surface-3: #252831;
+  --mg-ink: #f4f3ef;
+  --mg-ink-2: #a3a6b0;
+  --mg-ink-3: #6c707b;
+  --mg-border: rgba(255, 255, 255, 0.08);
+  --mg-border-strong: rgba(255, 255, 255, 0.16);
+  --mg-input-bg: #111318;
+  --mg-nav-bg: rgba(14, 15, 18, 0.92);
+  --mg-overlay: rgba(8, 9, 12, 0.78);
+
+  /* Brand & Semantic Accents */
+  --mg-accent: #e11d48;
+  --mg-accent-hover: #be123c;
+  --mg-accent-soft: rgba(225, 29, 72, 0.14);
+  --mg-gold: #f59e0b;
+  --mg-gold-soft: rgba(245, 158, 11, 0.14);
+  --mg-success: #10b981;
+  --mg-success-soft: rgba(16, 185, 129, 0.14);
+  --mg-warning: #f59e0b;
+  --mg-warning-soft: rgba(245, 158, 11, 0.14);
+  --mg-danger: #ef4444;
+  --mg-danger-soft: rgba(239, 68, 68, 0.14);
+
+  /* Shadows */
+  --mg-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --mg-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.36);
+  --mg-shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.48);
+
+  /* Hero Showcase Tokens (Dark) */
+  --mg-hero-bg: #0e0f12;
+  --mg-hero-ink: #ffffff;
+  --mg-hero-ink-2: rgba(255, 255, 255, 0.78);
+  --mg-hero-pill-bg: rgba(255, 255, 255, 0.12);
+  --mg-hero-pill-border: rgba(255, 255, 255, 0.20);
+  --mg-hero-scrim:
+    linear-gradient(90deg, rgba(14, 15, 18, 0.88) 0%, rgba(14, 15, 18, 0.52) 48%, rgba(14, 15, 18, 0.16) 100%),
+    linear-gradient(180deg, rgba(14, 15, 18, 0.24) 0%, transparent 45%, rgba(14, 15, 18, 0.78) 100%);
+
+  /* Compatibility vars */
+  --theme-border: var(--mg-border);
+  --theme-surface-darker: var(--mg-input-bg);
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-outfit);
+.light-theme {
+  --mg-bg: #f6f5f0;
+  --mg-surface: #ffffff;
+  --mg-surface-2: #efede6;
+  --mg-surface-3: #e5e2d9;
+  --mg-ink: #141518;
+  --mg-ink-2: #4e525c;
+  --mg-ink-3: #787c87;
+  --mg-border: rgba(20, 21, 24, 0.10);
+  --mg-border-strong: rgba(20, 21, 24, 0.20);
+  --mg-input-bg: #faf9f6;
+  --mg-nav-bg: rgba(246, 245, 240, 0.94);
+  --mg-overlay: rgba(20, 21, 24, 0.56);
+
+  --mg-accent: #e11d48;
+  --mg-accent-hover: #be123c;
+  --mg-accent-soft: rgba(225, 29, 72, 0.10);
+  --mg-gold: #b45309;
+  --mg-gold-soft: rgba(217, 119, 6, 0.12);
+  --mg-success: #059669;
+  --mg-success-soft: rgba(5, 150, 105, 0.11);
+  --mg-warning: #d97706;
+  --mg-warning-soft: rgba(217, 119, 6, 0.12);
+  --mg-danger: #dc2626;
+  --mg-danger-soft: rgba(220, 38, 38, 0.10);
+
+  --mg-shadow-sm: 0 1px 3px rgba(20, 21, 24, 0.06);
+  --mg-shadow-md: 0 8px 24px rgba(20, 21, 24, 0.08);
+  --mg-shadow-lg: 0 20px 48px rgba(20, 21, 24, 0.14);
+
+  /* Hero Showcase Tokens (Light — Minimal White Overlay) */
+  --mg-hero-bg: #f6f5f0;
+  --mg-hero-ink: #141518;
+  --mg-hero-ink-2: #3b3f47;
+  --mg-hero-pill-bg: rgba(255, 255, 255, 0.84);
+  --mg-hero-pill-border: rgba(20, 21, 24, 0.14);
+  --mg-hero-scrim:
+    linear-gradient(90deg, rgba(246, 245, 240, 0.88) 0%, rgba(246, 245, 240, 0.56) 44%, rgba(246, 245, 240, 0.12) 100%),
+    linear-gradient(180deg, rgba(246, 245, 240, 0.20) 0%, transparent 45%, rgba(246, 245, 240, 0.72) 100%);
+
+  --theme-border: var(--mg-border);
+  --theme-surface-darker: var(--mg-surface-2);
 }
 
-input[type="date"] {
-  color-scheme: dark;
-  accent-color: var(--color-primary);
-  background-color: var(--theme-surface-darker);
-  border: 1px solid var(--theme-border);
-  border-radius: 0.75rem;
-  color: var(--theme-white);
-  padding: 0.75rem 1rem;
-  font-family: var(--font-inter);
-  outline: none;
-  transition: border-color 0.2s;
-}
-.light-theme input[type="date"] {
-  color-scheme: light;
-}
-input[type="date"]:focus {
-  border-color: var(--color-primary);
+/* Keep Tailwind white/black pure across all themes */
+@theme {
+  --color-primary: #e11d48;
+  --color-secondary: #d97706;
+
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: 'Bricolage Grotesque', 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --font-inter: 'Plus Jakarta Sans', sans-serif;
+  --font-outfit: 'Bricolage Grotesque', sans-serif;
 }
 
-/* Dark themed select dropdowns */
-select {
-  color-scheme: dark;
-  appearance: none;
-  -webkit-appearance: none;
-  background-color: var(--theme-surface-darker);
-  border: 1px solid var(--theme-border);
-  border-radius: 0.75rem;
-  color: var(--theme-white);
-  padding: 0.75rem 2.5rem 0.75rem 1rem;
-  font-family: var(--font-inter);
-  font-size: 0.875rem;
-  outline: none;
-  cursor: pointer;
-  transition: border-color 0.2s;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-}
-.light-theme select {
-  color-scheme: light;
-}
-select:focus {
-  border-color: var(--color-primary);
-}
-select option {
-  background-color: var(--theme-base);
-  color: var(--theme-white);
-  padding: 0.5rem;
+/* ==========================================================================
+   BASE LAYER (lowest specificity so Tailwind utilities always win)
+   ========================================================================== */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--mg-bg);
+    color: var(--mg-ink);
+    margin: 0;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  input[type="date"],
+  input[type="time"] {
+    color-scheme: dark;
+    accent-color: var(--mg-accent);
+    background-color: var(--mg-input-bg);
+    border: 1px solid var(--mg-border-strong);
+    border-radius: 0.625rem;
+    color: var(--mg-ink);
+    padding: 0.625rem 0.875rem;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 150ms ease;
+  }
+
+  .light-theme input[type="date"],
+  .light-theme input[type="time"] {
+    color-scheme: light;
+  }
+
+  input[type="date"]:focus,
+  input[type="time"]:focus {
+    border-color: var(--mg-accent);
+  }
+
+  select {
+    color-scheme: dark;
+    appearance: none;
+    -webkit-appearance: none;
+    background-color: var(--mg-input-bg);
+    border: 1px solid var(--mg-border-strong);
+    border-radius: 0.625rem;
+    color: var(--mg-ink);
+    padding: 0.625rem 2.25rem 0.625rem 0.875rem;
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 150ms ease;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+
+  .light-theme select {
+    color-scheme: light;
+  }
+
+  select:focus {
+    border-color: var(--mg-accent);
+  }
+
+  select option {
+    background-color: var(--mg-surface);
+    color: var(--mg-ink);
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  ::-webkit-calendar-picker-indicator {
+    filter: invert(0.8);
+    cursor: pointer;
+  }
+
+  .light-theme ::-webkit-calendar-picker-indicator {
+    filter: none;
+  }
 }
 
-/* Hide number input spinners */
-input[type="number"]::-webkit-outer-spin-button,
-input[type="number"]::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type="number"] {
-  -moz-appearance: textfield;
+/* ==========================================================================
+   COMPONENTS LAYER (overridable by Tailwind @layer utilities like pl-10)
+   ========================================================================== */
+@layer components {
+  .mg-surface {
+    background-color: var(--mg-surface);
+    border: 1px solid var(--mg-border);
+  }
+
+  .mg-surface-2 {
+    background-color: var(--mg-surface-2);
+    border: 1px solid var(--mg-border);
+  }
+
+  .mg-ink {
+    color: var(--mg-ink);
+  }
+
+  .mg-ink-2 {
+    color: var(--mg-ink-2);
+  }
+
+  .mg-ink-3 {
+    color: var(--mg-ink-3);
+  }
+
+  .mg-hover:hover {
+    background-color: var(--mg-surface-2);
+  }
+
+  .mg-input {
+    width: 100%;
+    background-color: var(--mg-input-bg);
+    border: 1px solid var(--mg-border-strong);
+    border-radius: 0.625rem;
+    color: var(--mg-ink);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .mg-input::placeholder {
+    color: var(--mg-ink-3);
+  }
+
+  .mg-input:focus {
+    border-color: var(--mg-accent);
+    box-shadow: 0 0 0 3px var(--mg-accent-soft);
+  }
+
+  .mg-btn-primary {
+    background-color: var(--mg-accent);
+    color: #ffffff;
+  }
+  .mg-btn-primary:hover:not(:disabled) {
+    background-color: var(--mg-accent-hover);
+  }
+
+  .mg-btn-secondary {
+    background-color: var(--mg-surface-2);
+    border: 1px solid var(--mg-border-strong);
+    color: var(--mg-ink);
+  }
+  .mg-btn-secondary:hover:not(:disabled) {
+    background-color: var(--mg-surface-3);
+  }
+
+  .mg-btn-outline {
+    background-color: transparent;
+    border: 1px solid var(--mg-border-strong);
+    color: var(--mg-ink);
+  }
+  .mg-btn-outline:hover:not(:disabled) {
+    background-color: var(--mg-surface-2);
+  }
+
+  .mg-btn-ghost {
+    background-color: transparent;
+    color: var(--mg-ink-2);
+  }
+  .mg-btn-ghost:hover:not(:disabled) {
+    background-color: var(--mg-surface-2);
+    color: var(--mg-ink);
+  }
+
+  .mg-btn-danger {
+    background-color: #dc2626;
+    color: #ffffff;
+  }
+  .mg-btn-danger:hover:not(:disabled) {
+    background-color: #b91c1c;
+  }
+
+  .mg-btn-hero {
+    background-color: var(--mg-hero-pill-bg);
+    border: 1px solid var(--mg-hero-pill-border);
+    color: var(--mg-hero-ink);
+    backdrop-filter: blur(8px);
+  }
+  .mg-btn-hero:hover:not(:disabled) {
+    opacity: 0.9;
+  }
 }
 
-::-webkit-calendar-picker-indicator {
-  filter: invert(1);
-  cursor: pointer;
-}
-
+/* Scrollbar utilities */
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
@@ -119,17 +323,15 @@ input[type="number"] {
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 4px;
+  width: 5px;
+  height: 5px;
 }
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(244, 63, 94, 0.2);
-  border-radius: 10px;
-}
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(244, 63, 94, 0.4);
+  background: var(--mg-border-strong);
+  border-radius: 9999px;
 }
 
 .line-clamp-2 {
@@ -139,33 +341,21 @@ input[type="number"] {
   overflow: hidden;
 }
 
-.border-glow {
-  position: relative;
-}
-.border-glow::after {
-  content: '';
-  position: absolute;
-  inset: -1px;
-  background: linear-gradient(to bottom right, rgba(244,63,94,0.3), rgba(139,92,246,0.3));
-  border-radius: inherit;
-  z-index: -1;
-  opacity: 0;
-  transition: opacity 0.5s;
-}
-.border-glow:hover::after {
-  opacity: 1;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
-/* ============================================================
-   PRINT HELPERS (Basic)
-   ============================================================ */
 @media print {
   .no-print, nav, footer, aside, button {
     display: none !important;
   }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
 }
-
-
-
-
-

@@ -1,9 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { LayoutDashboard, Film, MapPin, Users, Settings, LogOut, Ticket, Tag, Gift, QrCode, Home, Menu, X as CloseIcon, MessageSquare } from 'lucide-react';
-import { logout } from '../../store/authSlice';
-import { getSocket, disconnectSocket } from '../../services/chatSocket';
+import { useSelector } from 'react-redux';
+import {
+  LayoutDashboard,
+  Film,
+  MapPin,
+  Users,
+  Settings,
+  LogOut,
+  Ticket,
+  Tag,
+  Gift,
+  QrCode,
+  Home,
+  Menu,
+  X as CloseIcon,
+  MessageSquare,
+  Sun,
+  Moon,
+} from 'lucide-react';
+import { getSocket } from '../../services/chatSocket';
 import LogoutModal from '../common/LogoutModal';
 
 const AdminLayout = () => {
@@ -11,179 +27,273 @@ const AdminLayout = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
-  const dispatch = useDispatch();
-  const isSuperAdmin = user?.role === 'admin';
+  const [apiStatus, setApiStatus] = useState('connected');
+  const [isLightMode, setIsLightMode] = useState(() => localStorage.getItem('theme') === 'light');
+
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'master_admin';
   const location = useLocation();
   const socketRef = useRef(null);
   const isOnChatPage = location.pathname === '/admin/chat';
-  // Ref so socket listener always reads the LATEST value (avoids stale closure)
   const isOnChatPageRef = useRef(isOnChatPage);
+  const myId = user?.id || user?._id;
 
-  // Keep ref in sync whenever route changes
   useEffect(() => {
     isOnChatPageRef.current = isOnChatPage;
   }, [isOnChatPage]);
 
-  // Global socket connection — keeps admin "online" from anywhere in panel
+  // Subtle sidebar health telemetry
   useEffect(() => {
-    if (!user) return;
-
-    const userId = user.id || user._id;
-    if (!userId) return;
-
-    socketRef.current = getSocket();
-
-    const onConnect = () => {
-      socketRef.current.emit('register', userId);
+    const checkHealth = async () => {
+      try {
+        const res = await fetch('/api/health');
+        setApiStatus(res.ok ? 'connected' : 'degraded');
+      } catch {
+        setApiStatus('degraded');
+      }
     };
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-    // Register immediately if already connected, or wait for connect event
-    if (socketRef.current.connected) {
-      socketRef.current.emit('register', userId);
-    } else {
-      socketRef.current.on('connect', onConnect);
-    }
+  // Global socket connection
+  useEffect(() => {
+    if (!myId) return;
+
+    const socket = getSocket();
+    socketRef.current = socket;
+
+    const onConnect = () => socket.emit('register', myId);
+    if (socket.connected) socket.emit('register', myId);
+    else socket.on('connect', onConnect);
 
     const onReceiveMessage = (message) => {
-      if (!isOnChatPageRef.current) {
-        const senderId = message.sender?._id || message.sender;
-        const myId = user?.id || user?._id;
-        if (senderId && senderId !== myId) {
-          setUnreadCount(prev => prev + 1);
-        }
+      if (isOnChatPageRef.current) {
+        setUnreadCount(0);
+        return;
+      }
+      const senderId = message.sender?._id || message.sender;
+      if (senderId && String(senderId) !== String(myId)) {
+        setUnreadCount((prev) => prev + 1);
       }
     };
 
-    socketRef.current.on('receiveMessage', onReceiveMessage);
+    socket.on('receiveMessage', onReceiveMessage);
 
     return () => {
-      // Only remove our specific listeners — do NOT disconnect the singleton
-      socketRef.current.off('connect', onConnect);
-      socketRef.current.off('receiveMessage', onReceiveMessage);
+      socket.off('connect', onConnect);
+      socket.off('receiveMessage', onReceiveMessage);
     };
-  }, [user?.id, user?._id]);
+  }, [myId]);
 
-  // Clear unread badge when user navigates to chat
-  useEffect(() => {
-    if (isOnChatPage) {
-      setUnreadCount(0);
+  const effectiveUnreadCount = isOnChatPage ? 0 : unreadCount;
+
+  const toggleTheme = () => {
+    const next = !isLightMode;
+    setIsLightMode(next);
+    if (next) {
+      document.body.classList.add('light-theme');
+      localStorage.setItem('theme', 'light');
+    } else {
+      document.body.classList.remove('light-theme');
+      localStorage.setItem('theme', 'dark');
     }
-  }, [isOnChatPage]);
-
-  const sidebarLinks = [
-    { name: 'Dashboard', path: '/admin', icon: <LayoutDashboard className="w-5 h-5" />, exact: true, showToManager: true },
-    { name: 'Movies', path: '/admin/movies', icon: <Film className="w-5 h-5" />, showToManager: true },
-    { name: 'Theaters', path: '/admin/theaters', icon: <MapPin className="w-5 h-5" />, showToManager: true },
-    { name: 'Bookings', path: '/admin/bookings', icon: <Ticket className="w-5 h-5" />, showToManager: true },
-    { name: 'Promotions', path: '/admin/promotions', icon: <Tag className="w-5 h-5" />, showToManager: true },
-    { name: 'Scanner', path: '/admin/scanner', icon: <QrCode className="w-5 h-5" />, showToManager: true },
-    { name: 'Users', path: '/admin/users', icon: <Users className="w-5 h-5" />, showToManager: false },
-    { name: 'Loyalty Store', path: '/admin/loyalty', icon: <Gift className="w-5 h-5" />, showToManager: true },
-    { name: 'Internal Chat', path: '/admin/chat', icon: <MessageSquare className="w-5 h-5" />, showToManager: true, badge: true },
-    { name: 'Settings', path: '/admin/settings', icon: <Settings className="w-5 h-5" />, showToManager: false },
-  ];
-
-  const visibleLinks = sidebarLinks.filter(link => isSuperAdmin || link.showToManager);
-
-  const handleLogout = () => {
-     setIsLogoutModalOpen(true);
+    window.dispatchEvent(new Event('mg-theme-change'));
   };
 
-  const toggleMobileMenu = () => setIsMobileMenuOpen(!isMobileMenuOpen);
+  useEffect(() => {
+    const syncTheme = () => setIsLightMode(document.body.classList.contains('light-theme'));
+    window.addEventListener('mg-theme-change', syncTheme);
+    return () => window.removeEventListener('mg-theme-change', syncTheme);
+  }, []);
+
+  const sidebarLinks = [
+    { name: 'Dashboard', path: '/admin', icon: LayoutDashboard, exact: true, showToManager: true },
+    { name: 'Movies', path: '/admin/movies', icon: Film, showToManager: true },
+    { name: 'Theaters', path: '/admin/theaters', icon: MapPin, showToManager: true },
+    { name: 'Bookings', path: '/admin/bookings', icon: Ticket, showToManager: true },
+    { name: 'Promotions', path: '/admin/promotions', icon: Tag, showToManager: true },
+    { name: 'Scanner', path: '/admin/scanner', icon: QrCode, showToManager: true },
+    { name: 'Users', path: '/admin/users', icon: Users, showToManager: false },
+    { name: 'Loyalty Store', path: '/admin/loyalty', icon: Gift, showToManager: true },
+    { name: 'Team Chat', path: '/admin/chat', icon: MessageSquare, showToManager: true, badge: true },
+    { name: 'Staff Settings', path: '/admin/settings', icon: Settings, showToManager: false },
+  ];
+
+  const visibleLinks = sidebarLinks.filter((link) => isSuperAdmin || link.showToManager);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-base w-full">
-      
+    <div
+      className="flex h-screen overflow-hidden w-full"
+      style={{ backgroundColor: 'var(--mg-bg)', color: 'var(--mg-ink)' }}
+    >
       {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] md:hidden" 
+        <div
+          className="fixed inset-0 backdrop-blur-sm z-[90] md:hidden"
+          style={{ backgroundColor: 'var(--mg-overlay)' }}
           onClick={() => setIsMobileMenuOpen(false)}
-        ></div>
+        />
       )}
 
       {/* Sidebar */}
-      <aside className={`
-        fixed md:sticky top-0 left-0 h-screen w-64 bg-surface/50 border-r border-white/10 backdrop-blur-xl flex flex-col z-[100] transition-transform duration-300 flex-shrink-0
-        ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-      `}>
-        <div className="p-6 border-b border-white/10 flex items-center justify-between flex-shrink-0">
-          <Link to="/admin" className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
-            <img src="/Logo.png" alt="MoviGo Logo" className="h-6 object-contain drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]" />
-            <span className="text-[10px] uppercase bg-primary/20 text-primary px-2 py-0.5 rounded font-bold tracking-wider ml-1">Admin</span>
+      <aside
+        className={`fixed md:sticky top-0 left-0 h-screen w-64 border-r flex flex-col z-[100] transition-transform duration-200 flex-shrink-0 ${
+          isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        }`}
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          borderColor: 'var(--mg-border)',
+        }}
+      >
+        <div
+          className="h-16 px-5 border-b flex items-center justify-between flex-shrink-0"
+          style={{ borderColor: 'var(--mg-border)' }}
+        >
+          <Link to="/admin" className="flex items-center gap-2.5">
+            <img src="/Logo.png" alt="MoviGo" className="h-6 object-contain" />
+            <span
+              className="text-[11px] font-semibold px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: 'var(--mg-accent-soft)',
+                color: 'var(--mg-accent)',
+              }}
+            >
+              Console
+            </span>
           </Link>
-          <button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-white/50 hover:text-white">
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="md:hidden p-1 rounded"
+            style={{ color: 'var(--mg-ink-2)' }}
+          >
             <CloseIcon className="w-5 h-5" />
           </button>
         </div>
 
-        <nav className="flex-1 py-6 px-4 space-y-2 overflow-y-auto hide-scrollbar">
-          {visibleLinks.map((link) => (
-            <NavLink
-              key={link.name}
-              to={link.path}
-              end={link.exact}
-              onClick={() => setIsMobileMenuOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-300 ${
-                  isActive 
-                  ? 'bg-primary/20 text-primary shadow-[0_0_15px_rgba(244,63,94,0.1)] border border-primary/30' 
-                  : 'text-white/60 hover:bg-white/5 hover:text-white border border-transparent'
-                }`
-              }
-            >
-              <span className="relative">
-                {link.icon}
-                {/* Unread badge on chat icon */}
-                {link.badge && unreadCount > 0 && !isOnChatPage && (
-                  <span className="absolute -top-2 -right-2 bg-primary text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center shadow-[0_0_8px_rgba(244,63,94,0.6)] animate-pulse">
-                    {unreadCount > 9 ? '9+' : unreadCount}
+        <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto custom-scrollbar">
+          {visibleLinks.map((link) => {
+            const IconComp = link.icon;
+            return (
+              <NavLink
+                key={link.name}
+                to={link.path}
+                end={link.exact}
+                onClick={() => {
+                  setIsMobileMenuOpen(false);
+                  if (link.badge) setUnreadCount(0);
+                }}
+                className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                style={({ isActive }) => ({
+                  backgroundColor: isActive ? 'var(--mg-accent-soft)' : 'transparent',
+                  color: isActive ? 'var(--mg-accent)' : 'var(--mg-ink-2)',
+                })}
+              >
+                <IconComp className="w-4 h-4 shrink-0" />
+                <span className="truncate">{link.name}</span>
+                {link.badge && effectiveUnreadCount > 0 && (
+                  <span
+                    className="ml-auto text-white text-[11px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ backgroundColor: 'var(--mg-accent)' }}
+                  >
+                    {effectiveUnreadCount > 99 ? '99+' : effectiveUnreadCount}
                   </span>
                 )}
-              </span>
-              {link.name}
-              {/* Also show count inline for clarity */}
-              {link.badge && unreadCount > 0 && !isOnChatPage && (
-                <span className="ml-auto bg-primary text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-[0_0_8px_rgba(244,63,94,0.4)]">
-                  {unreadCount > 99 ? '99+' : unreadCount}
-                </span>
-              )}
-            </NavLink>
-          ))}
-          
-          <div className="pt-4 mt-4 border-t border-white/5">
-            <Link 
-              to="/" 
-              className="flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-emerald-400/70 hover:text-emerald-400 hover:bg-emerald-400/5 transition-all border border-transparent"
+              </NavLink>
+            );
+          })}
+
+          <div className="pt-3 mt-3 border-t" style={{ borderColor: 'var(--mg-border)' }}>
+            <Link
+              to="/"
+              className="flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-sm font-medium transition-colors"
+              style={{ color: 'var(--mg-ink-2)' }}
             >
-              <Home className="w-5 h-5" />
-              Visit Home Page
+              <Home className="w-4 h-4 shrink-0" />
+              View Storefront
             </Link>
           </div>
         </nav>
 
-        <div className="p-4 border-t border-white/10 flex-shrink-0">
-          <button onClick={handleLogout} className="flex items-center gap-3 w-full px-4 py-3 text-white/50 hover:text-white hover:bg-white/5 transition-colors rounded-xl font-medium cursor-pointer">
-            <LogOut className="w-5 h-5" />
-            Logout ({user?.name?.split(' ')[0] || 'User'})
+        {/* Sidebar Footer */}
+        <div
+          className="p-3 border-t space-y-2 flex-shrink-0"
+          style={{ borderColor: 'var(--mg-border)' }}
+        >
+          <div
+            className="flex items-center justify-between px-3 py-2 rounded-lg text-xs"
+            style={{ backgroundColor: 'var(--mg-surface-2)', color: 'var(--mg-ink-2)' }}
+          >
+            <span className="flex items-center gap-2">
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    apiStatus === 'connected' ? 'var(--mg-success)' : 'var(--mg-danger)',
+                }}
+              />
+              API {apiStatus === 'connected' ? 'Online' : 'Offline'}
+            </span>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label="Toggle theme"
+              className="p-1 rounded hover:opacity-80 cursor-pointer"
+            >
+              {isLightMode ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsLogoutModalOpen(true)}
+            className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm font-medium rounded-lg transition-colors cursor-pointer hover:opacity-80"
+            style={{ color: 'var(--mg-ink-2)' }}
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            <span className="truncate">Sign Out ({user?.name?.split(' ')[0] || 'Staff'})</span>
           </button>
         </div>
       </aside>
 
-      {/* Main Content Area - scrolls independently */}
+      {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-w-0">
         {/* Mobile Header */}
-        <header className="md:hidden flex items-center justify-between p-4 bg-surface/50 border-b border-white/10 backdrop-blur-md sticky top-0 z-50">
-          <button onClick={toggleMobileMenu} className="p-2 text-white/70 hover:text-white bg-white/5 rounded-lg border border-white/10">
-            <Menu className="w-6 h-6" />
+        <header
+          className="md:hidden flex items-center justify-between h-14 px-4 border-b sticky top-0 z-50"
+          style={{
+            backgroundColor: 'var(--mg-surface)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-1.5 rounded-lg border"
+            style={{
+              backgroundColor: 'var(--mg-surface-2)',
+              borderColor: 'var(--mg-border)',
+              color: 'var(--mg-ink)',
+            }}
+          >
+            <Menu className="w-5 h-5" />
           </button>
-          <img src="/Logo.png" alt="Logo" className="h-5" />
-          <div className="relative">
-            {unreadCount > 0 && !isOnChatPage && (
-              <Link to="/admin/chat" className="relative p-2 text-primary">
-                <MessageSquare className="w-6 h-6" />
-                <span className="absolute -top-1 -right-1 bg-primary text-white text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center">
-                  {unreadCount > 9 ? '9+' : unreadCount}
+          <img src="/Logo.png" alt="MoviGo" className="h-5" />
+          <div className="w-8 flex justify-end">
+            {effectiveUnreadCount > 0 && (
+              <Link
+                to="/admin/chat"
+                onClick={() => setUnreadCount(0)}
+                className="relative p-1.5"
+                style={{ color: 'var(--mg-accent)' }}
+              >
+                <MessageSquare className="w-5 h-5" />
+                <span
+                  className="absolute -top-0.5 -right-0.5 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center"
+                  style={{ backgroundColor: 'var(--mg-accent)' }}
+                >
+                  {effectiveUnreadCount > 9 ? '9+' : effectiveUnreadCount}
                 </span>
               </Link>
             )}
@@ -195,12 +305,7 @@ const AdminLayout = () => {
         </div>
       </main>
 
-      {/* Logout Modal */}
-      <LogoutModal 
-        isOpen={isLogoutModalOpen} 
-        onClose={() => setIsLogoutModalOpen(false)} 
-      />
-
+      <LogoutModal isOpen={isLogoutModalOpen} onClose={() => setIsLogoutModalOpen(false)} />
     </div>
   );
 };

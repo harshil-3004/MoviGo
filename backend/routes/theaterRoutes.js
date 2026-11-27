@@ -2,12 +2,15 @@ const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
 const Theater = require('../models/Theater');
+const User = require('../models/User');
+const Showtime = require('../models/Showtime');
 const { verifyToken, adminOnly, theaterAdminOnly } = require('../middleware/authMiddleware');
+const { isAdminRole, getAuthorizedTheaterIds, sanitizeUser } = require('../utils/authHelpers');
 
-// GET /api/theaters -> Get all theaters (Public)
+// GET /api/theaters -> Get all approved theaters (Public)
 router.get('/', async (req, res) => {
   try {
-    const theaters = await Theater.find({});
+    const theaters = await Theater.find({ approvalStatus: 'Approved' });
     res.json(theaters);
   } catch (error) {
     res.status(500).json({ message: 'Server Error fetching theaters', error: error.message });
@@ -18,20 +21,12 @@ router.get('/', async (req, res) => {
 router.get('/admin', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
     let query = {};
-    if (req.user.role === 'theater_admin') {
-      const User = require('../models/User');
+    if (!isAdminRole(req.user.role)) {
       const user = await User.findById(req.user.id);
-      
-      const userId = new mongoose.Types.ObjectId(req.user.id);
-      const authorizedIds = (user.theaterIds || []).map(id => new mongoose.Types.ObjectId(id));
-      
-      // Show theaters explicitly assigned OR theaters they requested
-      query = { 
-        $or: [
-          { _id: { $in: authorizedIds } },
-          { requestedBy: userId }
-        ]
-      };
+      if (!user) return res.status(401).json({ message: 'User not found' });
+
+      const { objectIds } = await getAuthorizedTheaterIds(req.user.id, user.theaterIds);
+      query = { _id: { $in: objectIds } };
     }
     const theaters = await Theater.find(query);
     res.json(theaters);
@@ -43,10 +38,19 @@ router.get('/admin', verifyToken, theaterAdminOnly, async (req, res) => {
 // POST /api/theaters -> Add new theater (Admin or Theater Admin)
 router.post('/', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
+    const { name, location, format, idString, screens } = req.body || {};
+    if (typeof name !== 'string' || !name.trim() || typeof location !== 'string' || !location.trim()) {
+      return res.status(400).json({ message: 'Theater name and location are required' });
+    }
+
     const newTheater = new Theater({
-       ...req.body,
-       requestedBy: new mongoose.Types.ObjectId(req.user.id),
-       approvalStatus: req.user.role === 'admin' ? 'Approved' : 'Pending'
+      idString: typeof idString === 'string' && idString.trim() ? idString.trim() : `t-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: name.trim(),
+      location: location.trim(),
+      format: typeof format === 'string' && format.trim() ? format.trim() : 'Standard 2D',
+      screens: Array.isArray(screens) ? screens : [],
+      requestedBy: new mongoose.Types.ObjectId(req.user.id),
+      approvalStatus: isAdminRole(req.user.role) ? 'Approved' : 'Pending'
     });
     const saved = await newTheater.save();
     res.status(201).json(saved);
@@ -58,9 +62,27 @@ router.post('/', verifyToken, theaterAdminOnly, async (req, res) => {
 // PUT /api/theaters/:id -> Update basic theater info (Admin or Assigned Manager)
 router.put('/:id', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
-    const updated = await Theater.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ message: 'Theater not found' });
-    res.json(updated);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Theater not found' });
+    }
+
+    const theater = await Theater.findById(req.params.id);
+    if (!theater) return res.status(404).json({ message: 'Theater not found' });
+
+    if (!isAdminRole(req.user.role)) {
+      const { stringIds } = await getAuthorizedTheaterIds(req.user.id, req.user.theaterIds);
+      if (!stringIds.includes(theater._id.toString())) {
+        return res.status(403).json({ message: 'Not authorized to modify this theater' });
+      }
+    }
+
+    const { name, location, format } = req.body || {};
+    if (typeof name === 'string' && name.trim()) theater.name = name.trim();
+    if (typeof location === 'string' && location.trim()) theater.location = location.trim();
+    if (typeof format === 'string' && format.trim()) theater.format = format.trim();
+
+    await theater.save();
+    res.json(theater);
   } catch (error) {
     res.status(500).json({ message: 'Error updating theater', error: error.message });
   }
@@ -68,19 +90,25 @@ router.put('/:id', verifyToken, theaterAdminOnly, async (req, res) => {
 
 // PUT /api/theaters/:id/status -> Approve or Reject (Admin Only)
 router.put('/:id/status', verifyToken, adminOnly, async (req, res) => {
-  const { approvalStatus } = req.body;
+  const { approvalStatus } = req.body || {};
+  if (!['Pending', 'Approved', 'Rejected'].includes(approvalStatus)) {
+    return res.status(400).json({ message: 'Invalid approval status' });
+  }
+
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Theater not found' });
+    }
+
     const theater = await Theater.findById(req.params.id);
     if (!theater) return res.status(404).json({ message: 'Theater not found' });
-    
+
     theater.approvalStatus = approvalStatus;
     await theater.save();
 
-    // If approved, automatically add this theater to the requesting admin's managed list
     if (approvalStatus === 'Approved' && theater.requestedBy) {
-      const User = require('../models/User');
       await User.findByIdAndUpdate(theater.requestedBy, {
-        $addToSet: { theaterIds: theater._id } // Add ID if not already present
+        $addToSet: { theaterIds: theater._id }
       });
     }
 
@@ -90,28 +118,52 @@ router.put('/:id/status', verifyToken, adminOnly, async (req, res) => {
   }
 });
 
-// DELETE /api/theaters/:id -> Remove generic theater location (Admin Only)
+// DELETE /api/theaters/:id -> Remove theater location (Admin Only)
 router.delete('/:id', verifyToken, adminOnly, async (req, res) => {
   try {
-    await Theater.findByIdAndDelete(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Theater not found' });
+    }
+
+    const deleted = await Theater.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: 'Theater not found' });
+
+    await Promise.all([
+      User.updateMany({ theaterIds: deleted._id }, { $pull: { theaterIds: deleted._id } }),
+      Showtime.deleteMany({ theater: deleted._id })
+    ]);
+
     res.status(200).json({ message: 'Theater closed successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server Error closing theater', error: error.message });
   }
 });
 
-// PUT /api/theaters/:id/screens -> Update screen configurations (Admin/Theater Manager)
+// PUT /api/theaters/:id/screens -> Update screen configurations (Admin/Authorized Theater Manager)
 router.put('/:id/screens', verifyToken, theaterAdminOnly, async (req, res) => {
-  const { screens } = req.body;
+  const { screens } = req.body || {};
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(404).json({ message: 'Theater not found' });
+    }
+    if (!Array.isArray(screens) || screens.length > 5) {
+      return res.status(400).json({ message: 'Screens must be an array with at most 5 screens' });
+    }
+
     const theater = await Theater.findById(req.params.id);
     if (!theater) return res.status(404).json({ message: 'Theater not found' });
-    
-    // Check if theater is approved before modifying screens
-    if (theater.approvalStatus !== 'Approved') {
-        return res.status(403).json({ message: 'Cannot modify screens on an unapproved theater branch' });
+
+    if (!isAdminRole(req.user.role)) {
+      const { stringIds } = await getAuthorizedTheaterIds(req.user.id, req.user.theaterIds);
+      if (!stringIds.includes(theater._id.toString())) {
+        return res.status(403).json({ message: 'Not authorized to modify screens for this theater' });
+      }
     }
-    
+
+    if (theater.approvalStatus !== 'Approved') {
+      return res.status(403).json({ message: 'Cannot modify screens on an unapproved theater branch' });
+    }
+
     theater.screens = screens;
     await theater.save();
     res.json(theater);
@@ -122,21 +174,23 @@ router.put('/:id/screens', verifyToken, theaterAdminOnly, async (req, res) => {
 
 // POST /api/theaters/:id/personnel -> Assign a theater admin to this theater (Admin Only)
 router.post('/:id/personnel', verifyToken, adminOnly, async (req, res) => {
-  const { userId } = req.body;
+  const { userId } = req.body || {};
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Valid theater and user IDs are required' });
+    }
+
     const theater = await Theater.findById(req.params.id);
     if (!theater) return res.status(404).json({ message: 'Theater not found' });
 
-    const User = require('../models/User');
-    const user = await User.findById(userId);
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $addToSet: { theaterIds: theater._id } },
+      { new: true }
+    );
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Add theater ID to user's managed list
-    await User.findByIdAndUpdate(userId, {
-      $addToSet: { theaterIds: theater._id }
-    });
-
-    res.json({ message: 'Personnel authorized for this theater node.', user });
+    res.json({ message: 'Personnel authorized for this theater node.', user: sanitizeUser(user) });
   } catch (error) {
     res.status(500).json({ message: 'Error assigning personnel', error: error.message });
   }
@@ -146,17 +200,19 @@ router.post('/:id/personnel', verifyToken, adminOnly, async (req, res) => {
 router.delete('/:id/personnel/:userId', verifyToken, adminOnly, async (req, res) => {
   try {
     const { id, userId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ message: 'Valid theater and user IDs are required' });
+    }
+
     const theater = await Theater.findById(id);
     if (!theater) return res.status(404).json({ message: 'Theater node not found.' });
 
-    // CRITICAL: Owners (requestedBy) cannot have their access revoked
     if (theater.requestedBy && theater.requestedBy.toString() === userId) {
       return res.status(403).json({ message: 'Primary owners cannot have their access revoked. You must reject or delete the branch instead.' });
     }
 
-    const User = require('../models/User');
     await User.findByIdAndUpdate(userId, {
-      $pull: { theaterIds: id }
+      $pull: { theaterIds: theater._id }
     });
 
     res.json({ message: 'Personnel access revoked from this specific node.' });

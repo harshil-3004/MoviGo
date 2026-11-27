@@ -1,109 +1,129 @@
-import React, { useEffect, useState } from 'react';
-import { LogOut, X, AlertTriangle } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { LogOut, X } from 'lucide-react';
 import { useDispatch } from 'react-redux';
 import { logout } from '../../store/authSlice';
+import { resetBooking, setCheckoutLocked } from '../../store/bookingSlice';
+import { disconnectSocket } from '../../services/chatSocket';
 import { useNavigate } from 'react-router-dom';
+import Button from './Button';
 
 const LogoutModal = ({ isOpen, onClose }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const [isClosing, setIsClosing] = useState(false);
+  const timerRef = useRef(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setIsClosing(false);
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'unset';
-    }
+    if (!isOpen) return;
+    document.body.style.overflow = 'hidden';
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEsc);
     return () => {
+      document.removeEventListener('keydown', handleEsc);
       document.body.style.overflow = 'unset';
     };
-  }, [isOpen]);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   if (!isOpen && !isClosing) return null;
 
   const handleClose = () => {
     setIsClosing(true);
-    setTimeout(() => {
+    timerRef.current = setTimeout(() => {
       onClose();
       setIsClosing(false);
-    }, 300); // match animation duration
+    }, 180);
   };
 
   const handleConfirm = () => {
-    handleClose();
-    setTimeout(() => {
+    setIsClosing(true);
+    timerRef.current = setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+      disconnectSocket();
+      dispatch(setCheckoutLocked(false));
+      dispatch(resetBooking());
+      navigate('/', { replace: true });
       dispatch(logout());
-      navigate('/');
-    }, 300);
+    }, 180);
   };
 
-  return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div 
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+  const dialog = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
+      <div
+        className={`fixed inset-0 backdrop-blur-sm transition-opacity duration-200 ${
+          isClosing ? 'opacity-0' : 'opacity-100'
+        }`}
+        style={{ backgroundColor: 'var(--mg-overlay)' }}
         onClick={handleClose}
       />
-      
-      {/* Modal */}
-      <div 
-        className={`relative w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 transform border border-white/10
-          ${isClosing ? 'scale-95 opacity-0 translate-y-4' : 'scale-100 opacity-100 translate-y-0'}`}
-        style={{ background: 'var(--color-base)' }}
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="logout-modal-title"
+        className={`relative w-full max-w-sm rounded-2xl overflow-hidden transition-all duration-200 ${
+          isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'
+        }`}
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          border: '1px solid var(--mg-border-strong)',
+          boxShadow: 'var(--mg-shadow-lg)',
+          color: 'var(--mg-ink)',
+        }}
       >
         <div className="p-6">
-          {/* Header */}
-          <div className="flex justify-between items-start mb-6">
-            <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-primary/10 border border-primary/20 text-primary">
-              <LogOut className="w-6 h-6" />
+          <div className="flex justify-between items-start mb-4">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: 'var(--mg-accent-soft)', color: 'var(--mg-accent)' }}
+            >
+              <LogOut className="w-5 h-5" />
             </div>
-            <button 
+            <button
+              type="button"
               onClick={handleClose}
-              className="p-2 rounded-xl text-muted hover:text-white hover:bg-white/5 transition-colors"
+              aria-label="Close dialog"
+              className="p-1.5 rounded-lg transition-colors mg-hover cursor-pointer"
+              style={{ color: 'var(--mg-ink-3)' }}
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
-          {/* Content */}
-          <h3 className="text-xl font-bold mb-2 font-outfit" style={{ color: 'var(--color-white)' }}>
-            Confirm Logout
+          <h3
+            id="logout-modal-title"
+            className="text-lg font-bold mb-1.5 font-display"
+            style={{ color: 'var(--mg-ink)' }}
+          >
+            Sign out of MoviGo?
           </h3>
-          <p className="text-sm text-muted mb-8 leading-relaxed">
-            Are you sure you want to end your current session? You'll need to sign in again to access your account.
+          <p className="text-sm mb-6 leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+            You will need to sign back in to manage bookings, rewards, and tickets.
           </p>
 
-          {/* Actions */}
           <div className="flex gap-3">
-            <button 
-              onClick={handleClose}
-              className="flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-colors border"
-              style={{ 
-                borderColor: 'var(--theme-border)', 
-                color: 'var(--color-white)',
-                background: 'var(--color-surface)'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--theme-surface-darker)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--color-surface)'}
-            >
+            <Button variant="secondary" onClick={handleClose} className="flex-1">
               Cancel
-            </button>
-            <button 
-              onClick={handleConfirm}
-              className="flex-1 py-3 px-4 rounded-xl font-bold text-sm text-white bg-primary hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(244,63,94,0.3)] hover:shadow-[0_0_20px_rgba(244,63,94,0.5)]"
-            >
-              Yes, Log Out
-            </button>
+            </Button>
+            <Button variant="primary" onClick={handleConfirm} className="flex-1">
+              Sign Out
+            </Button>
           </div>
         </div>
-        
-        {/* Top Glow */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary/50 to-transparent"></div>
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 };
 
 export default LogoutModal;

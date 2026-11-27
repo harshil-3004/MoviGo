@@ -4,12 +4,18 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Otp = require('../models/Otp');
+const { validatePassword, PASSWORD_POLICY_MESSAGE } = require('../utils/authHelpers');
 
 // POST /api/auth/login -> Authenticate user and issue JWT
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string' || !email.trim() || !password) {
+    return res.status(400).json({ message: 'Email and password are required' });
+  }
+
   try {
-    const user = await User.findOne({ email });
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(401).json({ message: 'Invalid Credentials' });
     }
@@ -30,86 +36,91 @@ router.post('/login', async (req, res) => {
         profilePhoto: user.profilePhoto,
         isMember: user.isMember,
         rewardPoints: user.rewardPoints,
+        membershipLevel: user.membershipLevel,
         membershipExpiry: user.membershipExpiry
       }
     };
 
-    jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' }, (err, token) => {
-      if (err) throw err;
-      // Send the token and user payload back to the frontend
-      res.json({ token, user: payload.user });
-    });
-
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+    res.json({ token, user: payload.user });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Server Error during login' });
   }
 });
 
-const validatePassword = (password) => {
-  const minLength = password.length >= 6;
-  const hasUppercase = /[A-Z]/.test(password);
-  const hasSymbol = /[!@#$%^&*(),.?":{}|<>_]/.test(password);
-  const hasAlphabet = /[a-zA-Z]/.test(password);
-  const hasNumber = /\d/.test(password);
-  return minLength && hasUppercase && hasSymbol && hasAlphabet && hasNumber;
-};
-
 // POST /api/auth/register -> Create a new standard consumer account (OTP-verified)
 router.post('/register', async (req, res) => {
-  const { name, email, mobile, password, profilePhoto, otp } = req.body;
+  const { name, email, mobile, password, profilePhoto, otp } = req.body || {};
   try {
-    if (!otp) {
-      return res.status(400).json({ message: 'Email verification OTP is required.' });
+    if (
+      typeof name !== 'string' || !name.trim() ||
+      typeof email !== 'string' || !email.trim() ||
+      typeof mobile !== 'string' || !mobile.trim() ||
+      typeof password !== 'string' ||
+      typeof otp !== 'string' || !otp.trim()
+    ) {
+      return res.status(400).json({ message: 'Name, email, mobile, password, and OTP are required.' });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedOtp = otp.trim();
+    const normalizedMobile = mobile.trim();
+
     // Verify OTP
-    const otpRecord = await Otp.findOne({ email, otp, purpose: 'registration' });
+    const otpRecord = await Otp.findOne({ email: normalizedEmail, otp: normalizedOtp, purpose: 'registration' });
     if (!otpRecord) {
       return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new one.' });
     }
 
     if (!validatePassword(password)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters, contain 1 uppercase letter, 1 unique symbol, and 1 number.' });
+      return res.status(400).json({ message: PASSWORD_POLICY_MESSAGE });
     }
 
-    let user = await User.findOne({ mobile });
-    if (user) {
+    let existingUser = await User.findOne({ mobile: normalizedMobile });
+    if (existingUser) {
       return res.status(400).json({ message: 'User already exists with this mobile number' });
     }
 
-    // Also check email uniqueness
-    user = await User.findOne({ email });
-    if (user) {
+    existingUser = await User.findOne({ email: normalizedEmail });
+    if (existingUser) {
       return res.status(400).json({ message: 'User already exists with this email' });
     }
 
-    user = new User({ name, email, mobile, password, profilePhoto, role: 'user' });
-
-    // Hash password
     const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const user = new User({
+      name: name.trim(),
+      email: normalizedEmail,
+      mobile: normalizedMobile,
+      password: hashedPassword,
+      profilePhoto: typeof profilePhoto === 'string' ? profilePhoto : null,
+      role: 'user'
+    });
     await user.save();
 
     // Consume the OTP
-    await Otp.deleteMany({ email, purpose: 'registration' });
+    await Otp.deleteMany({ email: normalizedEmail, purpose: 'registration' });
 
     const payload = {
       user: {
         id: user.id,
         role: user.role,
-        theaterId: user.theaterId,
+        theaterIds: user.theaterIds,
         name: user.name,
         email: user.email,
         mobile: user.mobile,
-        profilePhoto: user.profilePhoto
+        profilePhoto: user.profilePhoto,
+        isMember: user.isMember,
+        rewardPoints: user.rewardPoints,
+        membershipLevel: user.membershipLevel,
+        membershipExpiry: user.membershipExpiry
       }
     };
 
-    jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' }, (err, token) => {
-      if (err) throw err;
-      res.json({ token, user: payload.user });
-    });
-
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
+    res.json({ token, user: payload.user });
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({ message: 'Server Error during registration' });
@@ -118,23 +129,30 @@ router.post('/register', async (req, res) => {
 
 // POST /api/auth/reset-password -> Reset user password (OTP-verified)
 router.post('/reset-password', async (req, res) => {
-  const { email, newPassword, otp } = req.body;
+  const { email, newPassword, otp } = req.body || {};
   try {
-    if (!otp) {
-      return res.status(400).json({ message: 'Email verification OTP is required.' });
+    if (
+      typeof email !== 'string' || !email.trim() ||
+      typeof newPassword !== 'string' ||
+      typeof otp !== 'string' || !otp.trim()
+    ) {
+      return res.status(400).json({ message: 'Email, new password, and OTP are required.' });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedOtp = otp.trim();
+
     // Verify OTP
-    const otpRecord = await Otp.findOne({ email, otp, purpose: 'reset' });
+    const otpRecord = await Otp.findOne({ email: normalizedEmail, otp: normalizedOtp, purpose: 'reset' });
     if (!otpRecord) {
       return res.status(400).json({ message: 'Invalid or expired OTP. Please request a new one.' });
     }
 
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters, contain 1 uppercase letter, 1 unique symbol, and 1 number.' });
+      return res.status(400).json({ message: PASSWORD_POLICY_MESSAGE });
     }
 
-    let user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(404).json({ message: 'No account found with this email.' });
     }
@@ -144,10 +162,11 @@ router.post('/reset-password', async (req, res) => {
     await user.save();
 
     // Consume the OTP
-    await Otp.deleteMany({ email, purpose: 'reset' });
+    await Otp.deleteMany({ email: normalizedEmail, purpose: 'reset' });
 
     res.json({ message: 'Password reset successfully!' });
   } catch (error) {
+    console.error('Reset password error:', error);
     res.status(500).json({ message: 'Server error during password reset.' });
   }
 });

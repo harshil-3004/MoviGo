@@ -113,7 +113,7 @@ const generateBookingPDF = async (booking) => {
       doc.fillColor(primaryColor)
          .fontSize(10)
          .font('Helvetica-Bold')
-         .text(`FINAL PRICE PAID: Rs. ${booking.totalAmount?.toFixed(2)}`, 40, 375);
+         .text(`FINAL PRICE PAID: Rs. ${(booking.totalAmount ?? 0).toFixed(2)}`, 40, 375);
 
       doc.fillColor(mutedColor)
          .fontSize(8)

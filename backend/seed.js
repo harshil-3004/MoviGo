@@ -86,6 +86,21 @@ const REAL_MOVIES = [
   }
 ];
 
+const buildScreenLayout = (rows, cols) =>
+  Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ type: 'seat', isReserved: false }))
+  );
+
+const buildScreenPricing = (rows, rowPrices) => {
+  const pricing = {};
+  const fallback = rowPrices[rowPrices.length - 1] ?? 350;
+  for (let r = 0; r < rows; r++) {
+    const label = String.fromCharCode(65 + r);
+    pricing[label] = rowPrices[r] ?? fallback;
+  }
+  return pricing;
+};
+
 const MOCK_THEATERS = [
   {
     idString: "t1",
@@ -94,8 +109,22 @@ const MOCK_THEATERS = [
     format: "IMAX / 4DX",
     approvalStatus: "Approved",
     screens: [
-      { number: 1, name: "Screen 1 - Grand IMAX", rows: 10, cols: 15, pricing: { "A": 500, "B": 500, "C": 450, "D": 450, "E": 400 } },
-      { number: 2, name: "Screen 2 - Atmos Gold", rows: 8, cols: 12, pricing: { "A": 650, "B": 650, "C": 600 } }
+      {
+        number: 1,
+        name: "Screen 1 - Grand IMAX",
+        rows: 10,
+        cols: 15,
+        layout: buildScreenLayout(10, 15),
+        pricing: buildScreenPricing(10, [500, 500, 450, 450, 400, 400, 350, 350, 350, 350])
+      },
+      {
+        number: 2,
+        name: "Screen 2 - Atmos Gold",
+        rows: 8,
+        cols: 12,
+        layout: buildScreenLayout(8, 12),
+        pricing: buildScreenPricing(8, [650, 650, 600, 600, 550, 550, 500, 500])
+      }
     ]
   },
   {
@@ -105,7 +134,14 @@ const MOCK_THEATERS = [
     format: "Standard / Dolby",
     approvalStatus: "Approved",
     screens: [
-      { number: 1, name: "Platinum Reel 1", rows: 12, cols: 12, pricing: { "A": 350, "B": 350, "C": 300 } }
+      {
+        number: 1,
+        name: "Platinum Reel 1",
+        rows: 12,
+        cols: 12,
+        layout: buildScreenLayout(12, 12),
+        pricing: buildScreenPricing(12, [350, 350, 300, 300, 300, 300, 250, 250, 250, 250, 250, 250])
+      }
     ]
   }
 ];
@@ -116,7 +152,10 @@ const getFutureDates = (count = 7) => {
   for (let i = 0; i < count; i++) {
     const d = new Date(today);
     d.setDate(today.getDate() + i);
-    dates.push(d.toISOString().split('T')[0]);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    dates.push(`${y}-${m}-${day}`);
   }
   return dates;
 };
@@ -146,7 +185,7 @@ const seedData = async () => {
 
     const users = await User.insertMany([
       { name: 'System Admin', email: 'admin@movigo.com', password: adminPassword, role: 'admin', membershipLevel: 'Gold', rewardPoints: 10000 },
-      { name: 'Theater Manager', email: 'manager@cinema.com', password: managerPassword, role: 'theater_admin', theaterId: 't1' },
+      { name: 'Theater Manager', email: 'manager@cinema.com', password: managerPassword, role: 'theater_admin', theaterIds: [] },
       { name: 'John Doe', email: 'user@test.com', password: userPassword, role: 'user', rewardPoints: 500 }
     ]);
     console.log('✅ Users seeded.');

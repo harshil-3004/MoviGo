@@ -3,10 +3,12 @@ const mongoose = require('mongoose');
 const cors = require('cors');
 const path = require('path');
 const http = require('http');
+const jwt = require('jsonwebtoken');
 const { Server } = require('socket.io');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
@@ -19,8 +21,12 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// Serve static files from the uploads directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// Serve static files from the uploads directory with safe headers
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'), {
+  setHeaders: (res) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+  }
+}));
 
 // Database Connection
 const { connectDB } = require('./utils/db');
@@ -45,89 +51,115 @@ app.use('/api/scan', require('./routes/scanRoutes'));
 app.use('/api/otp', require('./routes/otpRoutes'));
 app.use('/api/chat', require('./routes/chatRoutes'));
 
-// Socket.io Logic
-const onlineUsers = new Map(); // userId -> socketId
+// Socket.io Auth & Presence Logic
+const onlineUsers = new Map(); // userId -> Set<socketId>
+
+const emitToUser = (userId, event, payload) => {
+  const sockets = onlineUsers.get(String(userId));
+  if (!sockets) return;
+  for (const sid of sockets) {
+    io.to(sid).emit(event, payload);
+  }
+};
+
+io.use(async (socket, next) => {
+  try {
+    const token = socket.handshake.auth?.token;
+    if (!token) {
+      return next(new Error('Authentication required'));
+    }
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const User = require('./models/User');
+    const user = await User.findById(decoded.user.id).select('_id role');
+    if (!user || !['admin', 'master_admin', 'theater_admin'].includes(user.role)) {
+      return next(new Error('Insufficient chat privileges'));
+    }
+    socket.userId = user._id.toString();
+    next();
+  } catch {
+    next(new Error('Invalid authentication token'));
+  }
+});
 
 io.on('connection', (socket) => {
-  console.log('User connected to chat:', socket.id);
+  const authedUserId = socket.userId;
 
-  socket.on('register', (userId) => {
-    onlineUsers.set(userId, socket.id);
+  const addPresence = (uid) => {
+    if (!uid) return;
+    if (!onlineUsers.has(uid)) {
+      onlineUsers.set(uid, new Set());
+    }
+    onlineUsers.get(uid).add(socket.id);
     io.emit('onlineUsers', Array.from(onlineUsers.keys()));
+  };
+
+  addPresence(authedUserId);
+
+  socket.on('register', () => {
+    addPresence(authedUserId);
   });
 
   socket.on('sendMessage', async (data) => {
     try {
-      const { sender, receiver, text, fileUrl, fileType } = data;
+      if (!data || typeof data !== 'object') return;
+      const { receiver, text, fileUrl, fileType } = data;
+      const trimmedText = typeof text === 'string' ? text.trim() : '';
+      if (!receiver || !mongoose.Types.ObjectId.isValid(receiver)) return;
+      if (!trimmedText && !fileUrl) return;
+
       const Message = require('./models/Message');
-      
       const newMessage = new Message({
-        sender,
+        sender: authedUserId,
         receiver,
-        text: text || '',
-        fileUrl: fileUrl || null,
-        fileType: fileType || null,
+        text: trimmedText,
+        fileUrl: typeof fileUrl === 'string' ? fileUrl : null,
+        fileType: typeof fileType === 'string' ? fileType : null,
         read: false
       });
       await newMessage.save();
-      
+
       const populatedMessage = await Message.findById(newMessage._id).populate('sender', 'name profilePhoto role');
 
-      const receiverSocketId = onlineUsers.get(receiver);
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('receiveMessage', populatedMessage);
-      }
-      // Also send back to sender so their UI updates
-      socket.emit('receiveMessage', populatedMessage);
-      
+      emitToUser(receiver, 'receiveMessage', populatedMessage);
+      emitToUser(authedUserId, 'receiveMessage', populatedMessage);
     } catch (err) {
       console.error('Error sending message:', err);
     }
   });
 
-  socket.on('markAsRead', async ({ senderId, receiverId }) => {
+  socket.on('markAsRead', async ({ senderId } = {}) => {
     try {
+      if (!senderId || !mongoose.Types.ObjectId.isValid(senderId)) return;
       const Message = require('./models/Message');
       await Message.updateMany(
-        { sender: senderId, receiver: receiverId, read: false },
+        { sender: senderId, receiver: authedUserId, read: false },
         { $set: { read: true } }
       );
-      const senderSocketId = onlineUsers.get(senderId);
-      if (senderSocketId) {
-        io.to(senderSocketId).emit('messagesRead', { receiverId });
-      }
+      emitToUser(senderId, 'messagesRead', { receiverId: authedUserId });
     } catch (err) {
       console.error('Error marking as read:', err);
     }
   });
 
-  socket.on('typing', ({ sender, receiver }) => {
-    const receiverSocketId = onlineUsers.get(receiver);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('typing', { sender });
-    }
+  socket.on('typing', ({ receiver } = {}) => {
+    if (!receiver) return;
+    emitToUser(receiver, 'typing', { sender: authedUserId });
   });
 
-  socket.on('stopTyping', ({ sender, receiver }) => {
-    const receiverSocketId = onlineUsers.get(receiver);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit('stopTyping', { sender });
-    }
+  socket.on('stopTyping', ({ receiver } = {}) => {
+    if (!receiver) return;
+    emitToUser(receiver, 'stopTyping', { sender: authedUserId });
   });
 
   socket.on('disconnect', () => {
-    let disconnectedUserId = null;
-    for (const [userId, socketId] of onlineUsers.entries()) {
-      if (socketId === socket.id) {
-        disconnectedUserId = userId;
-        onlineUsers.delete(userId);
-        break;
+    const sockets = onlineUsers.get(authedUserId);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        onlineUsers.delete(authedUserId);
       }
-    }
-    if (disconnectedUserId) {
       io.emit('onlineUsers', Array.from(onlineUsers.keys()));
     }
-    console.log('User disconnected from chat:', socket.id);
   });
 });
 

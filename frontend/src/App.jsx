@@ -1,38 +1,4 @@
-import { useSelector } from 'react-redux';
-import { useState, useEffect } from 'react';
-
-// Admin-only system health indicator
-const SystemLinkIndicator = () => {
-  const { user } = useSelector(state => state.auth);
-  const [status, setStatus] = useState('stable');
-
-  useEffect(() => {
-    if (!user || (user.role !== 'admin' && user.role !== 'theater_admin')) return;
-
-    const checkHealth = async () => {
-      try {
-        const res = await fetch('/api/health');
-        setStatus(res.ok ? 'stable' : 'unstable');
-      } catch {
-        setStatus('unstable');
-      }
-    };
-
-    checkHealth();
-    const interval = setInterval(checkHealth, 30000); // Check every 30s
-    return () => clearInterval(interval);
-  }, [user]);
-
-  if (!user || (user.role !== 'admin' && user.role !== 'theater_admin')) return null;
-
-  return (
-    <div className={`fixed top-0 left-0 z-[9999] text-white text-[8px] px-2 py-1 font-bold tracking-tighter transition-colors duration-500 ${
-      status === 'stable' ? 'bg-emerald-600' : 'bg-red-600 animate-pulse'
-    }`}>
-      SYSTEM LINK: {status.toUpperCase()}
-    </div>
-  );
-};
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Outlet } from 'react-router-dom';
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
@@ -72,12 +38,10 @@ import AdminProtectedRoute from './components/admin/AdminProtectedRoute';
 const ConsumerLayout = () => (
   <>
     <Navbar />
-    <main className="flex-grow pt-24 relative z-20 w-full min-h-screen">
+    <main className="flex-1 pt-16 w-full min-h-[calc(100vh-4rem)]">
       <Outlet />
     </main>
-    <div className="relative z-10 w-full">
-      <Footer />
-    </div>
+    <Footer />
   </>
 );
 
@@ -92,14 +56,10 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen flex flex-col relative bg-base text-white overflow-hidden">
-        {/* Admin-Only System Health Indicator */}
-        <SystemLinkIndicator />
-        
-        {/* Ambient background glows */}
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/20 rounded-full blur-[120px] pointer-events-none"></div>
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-secondary/20 rounded-full blur-[120px] pointer-events-none"></div>
-
+      <div
+        className="min-h-screen flex flex-col relative"
+        style={{ backgroundColor: 'var(--mg-bg)', color: 'var(--mg-ink)' }}
+      >
         <Routes>
           {/* Backoffice Public Login Gateway */}
           <Route path="/admin/login" element={<AdminLogin />} />
@@ -119,7 +79,14 @@ function App() {
               <Route path="screens/:theaterId" element={<AdminScreenManagement />} />
               <Route path="showtimes/:theaterId" element={<AdminShowtimeManagement />} />
               <Route path="scanner" element={<AdminScanner />} />
-              <Route path="*" element={<div className="p-10 w-full flex items-center justify-center"><h2 className="text-2xl font-bold font-outfit text-white/50">Module Pending Construction</h2></div>} />
+              <Route
+                path="*"
+                element={
+                  <div className="p-10 w-full flex items-center justify-center">
+                    <h2 className="text-xl font-semibold mg-ink-2">Section not found</h2>
+                  </div>
+                }
+              />
             </Route>
           </Route>
 

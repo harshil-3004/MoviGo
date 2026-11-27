@@ -9,7 +9,16 @@ export default defineConfig({
     host: true, // Exposes the server on the local network
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:5001',
+        changeOrigin: true
+      },
+      '/uploads': {
+        target: 'http://localhost:5001',
+        changeOrigin: true
+      },
+      '/socket.io': {
+        target: 'http://localhost:5001',
+        ws: true,
         changeOrigin: true
       }
     }

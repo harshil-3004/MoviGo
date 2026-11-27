@@ -1,66 +1,90 @@
-import React from 'react';
-import { Lock, Eye, Database, Globe } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Lock, Eye, Database, UserX } from 'lucide-react';
 
 const Privacy = () => {
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
   return (
-    <div className="w-full min-h-screen bg-base pt-12 pb-32 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-primary/5 blur-[150px] -z-10 rounded-full"></div>
-      
-      <div className="max-w-4xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-           <div className="w-12 h-12 bg-secondary/20 rounded-2xl flex items-center justify-center border border-secondary/30">
-              <Lock className="w-6 h-6 text-secondary" />
-           </div>
-           <div>
-              <h1 className="text-4xl font-bold font-outfit text-white">Privacy Policy</h1>
-              <p className="text-muted text-sm uppercase tracking-widest font-black mt-1">Data Sovereignty Protocol v1.0</p>
-           </div>
+    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 md:py-16 pb-24">
+      <div className="flex items-start gap-4 mb-8">
+        <div
+          className="w-11 h-11 rounded-xl flex items-center justify-center border shrink-0"
+          style={{
+            backgroundColor: 'var(--mg-accent-soft)',
+            borderColor: 'var(--mg-border)',
+            color: 'var(--mg-accent)',
+          }}
+        >
+          <Lock className="w-5 h-5" />
         </div>
-
-        <div className="bg-surface/30 border border-white/5 rounded-[2.5rem] p-8 md:p-12 backdrop-blur-3xl space-y-12">
-          <section className="space-y-4">
-            <div className="flex items-center gap-3 text-white font-bold text-xl font-outfit">
-               <Database className="w-5 h-5 text-secondary" />
-               1. Data Collection
-            </div>
-            <p className="text-muted leading-relaxed">
-              We collect minimal data necessary to facilitate your cinema experience. This includes your name, email, and mobile number for authentication and ticket delivery. Profile photos are stored securely on our encrypted cloud infrastructure and are never shared with third-party advertisers.
-            </p>
-          </section>
-
-          <section className="space-y-4">
-            <div className="flex items-center gap-3 text-white font-bold text-xl font-outfit">
-               <Eye className="w-5 h-5 text-secondary" />
-               2. Information Usage
-            </div>
-            <p className="text-muted leading-relaxed">
-              Your information is used solely for:
-            </p>
-            <ul className="list-disc list-inside text-muted space-y-2 ml-4">
-              <li>Generating your unique QR-coded digital tickets.</li>
-              <li>Processing secure transactions via our encrypted gateway.</li>
-              <li>Managing your "Inner Circle" membership and rewards.</li>
-              <li>Sending essential showtime alerts and security notifications.</li>
-            </ul>
-          </section>
-
-          <section className="space-y-4">
-            <div className="flex items-center gap-3 text-white font-bold text-xl font-outfit">
-               <Globe className="w-5 h-5 text-secondary" />
-               3. Your Right to Erasure
-            </div>
-            <p className="text-muted leading-relaxed">
-              We believe in true data sovereignty. At any time, you can navigate to your **Profile Settings** and initiate a **"Data Purge"**. This will instantly and permanently erase all your personal data, booking history, and identity records from our servers. This action is irreversible.
-            </p>
-          </section>
-
-          <section className="space-y-4 border-t border-white/5 pt-8">
-            <h4 className="text-white font-bold">Privacy Officer</h4>
-            <p className="text-muted text-sm">
-              For data access requests or privacy concerns, reach out to us at <span className="text-secondary font-bold">movigo00@gmail.com</span>.
-            </p>
-          </section>
+        <div>
+          <h1 className="text-3xl sm:text-4xl font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+            Privacy Policy
+          </h1>
+          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--mg-ink-3)' }}>
+            MoviGo Data Protection Notice
+          </p>
         </div>
+      </div>
+
+      <div
+        className="rounded-xl border p-6 sm:p-10 space-y-8"
+        style={{
+          backgroundColor: 'var(--mg-surface)',
+          borderColor: 'var(--mg-border)',
+        }}
+      >
+        <section className="space-y-2.5">
+          <h2 className="text-lg font-display font-bold flex items-center gap-2.5" style={{ color: 'var(--mg-ink)' }}>
+            <Database className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-accent)' }} />
+            1. Data Collection
+          </h2>
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+            We collect only the information needed to operate your cinema ticketing experience, including your name, email address, and mobile number for account verification and ticket delivery. Uploaded profile photos are stored securely and are never sold to third-party advertisers.
+          </p>
+        </section>
+
+        <section className="space-y-2.5">
+          <h2 className="text-lg font-display font-bold flex items-center gap-2.5" style={{ color: 'var(--mg-ink)' }}>
+            <Eye className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-accent)' }} />
+            2. How We Use Information
+          </h2>
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+            Your information is used strictly to:
+          </p>
+          <ul className="list-disc list-inside text-sm space-y-1.5 ml-2" style={{ color: 'var(--mg-ink-2)' }}>
+            <li>Issue unique QR-coded digital cinema passes and downloadable PDF tickets.</li>
+            <li>Process booking reservations and seat holds safely.</li>
+            <li>Track Inner Circle membership perks and loyalty point redemptions.</li>
+            <li>Deliver essential booking confirmations and account security emails.</li>
+          </ul>
+        </section>
+
+        <section className="space-y-2.5">
+          <h2 className="text-lg font-display font-bold flex items-center gap-2.5" style={{ color: 'var(--mg-ink)' }}>
+            <UserX className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-accent)' }} />
+            3. Right to Account Deletion
+          </h2>
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--mg-ink-2)' }}>
+            You control your account data. At any time, open{' '}
+            <strong style={{ color: 'var(--mg-ink)' }}>Account Settings</strong> inside your profile to permanently delete your account and associated personal data from our servers.
+          </p>
+        </section>
+
+        <section className="pt-6 border-t space-y-1.5" style={{ borderColor: 'var(--mg-border)' }}>
+          <h3 className="text-sm font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+            Privacy Contact
+          </h3>
+          <p className="text-sm" style={{ color: 'var(--mg-ink-2)' }}>
+            For data access or deletion requests, email{' '}
+            <a href="mailto:movigo00@gmail.com" className="font-semibold hover:underline" style={{ color: 'var(--mg-accent)' }}>
+              movigo00@gmail.com
+            </a>
+            .
+          </p>
+        </section>
       </div>
     </div>
   );

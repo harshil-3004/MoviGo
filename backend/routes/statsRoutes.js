@@ -2,31 +2,23 @@ const express = require('express');
 const router = express.Router();
 const Booking = require('../models/Booking');
 const User = require('../models/User');
-const Movie = require('../models/Movie');
 const { verifyToken, theaterAdminOnly } = require('../middleware/authMiddleware');
-const mongoose = require('mongoose');
+const { isAdminRole, getAuthorizedTheaterIds } = require('../utils/authHelpers');
 
 // GET /api/stats -> Dashboard Analytics (Filtered for Theater Admins)
 router.get('/', verifyToken, theaterAdminOnly, async (req, res) => {
   try {
-    const isTheaterAdmin = req.user.role === 'theater_admin';
+    const isTheaterAdmin = !isAdminRole(req.user.role);
     let theaterFilter = {};
 
     if (isTheaterAdmin) {
-      const userId = new mongoose.Types.ObjectId(req.user.id);
-      // Fetch theater IDs the user is authorized for
-      const authorizedIds = (req.user.theaterIds || []).map(id => new mongoose.Types.ObjectId(id));
-      
-      // Let's also include requested theaters specifically
-      const Theater = require('../models/Theater');
-      const ownedTheaters = await Theater.find({ requestedBy: userId }).select('_id');
-      const ownedIds = ownedTheaters.map(t => t._id);
-      
-      const allAuthorizedIds = [...new Set([...authorizedIds, ...ownedIds])];
+      const { objectIds: allAuthorizedIds } = await getAuthorizedTheaterIds(
+        req.user.id,
+        req.user.theaterIds
+      );
       theaterFilter = { 'showtimeDetails.theater': { $in: allAuthorizedIds } };
     }
 
-    // Common Aggregate Start (Join Booking with Showtime to get Theater ID)
     const baseMatch = { status: 'Confirmed' };
 
     // 1. Total Bookings & 2. Total Revenue
@@ -54,7 +46,7 @@ router.get('/', verifyToken, theaterAdminOnly, async (req, res) => {
     const totalBookings = mainStats.length > 0 ? mainStats[0].count : 0;
     const totalRevenue = mainStats.length > 0 ? mainStats[0].totalRevenue : 0;
 
-    // 3. Total Users (Global count, or we could skip for theater admins if preferred)
+    // 3. Total Users
     const totalUsers = isTheaterAdmin ? 0 : await User.countDocuments({ role: 'user' });
 
     // 4. Top Performing Movies
@@ -94,7 +86,7 @@ router.get('/', verifyToken, theaterAdminOnly, async (req, res) => {
     // 5. Revenue by Day (Last 7 Days)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    
+
     const revenueByDay = await Booking.aggregate([
       { $match: { status: 'Confirmed', createdAt: { $gte: sevenDaysAgo } } },
       {
@@ -109,7 +101,7 @@ router.get('/', verifyToken, theaterAdminOnly, async (req, res) => {
       ...(isTheaterAdmin ? [{ $match: theaterFilter }] : []),
       {
         $group: {
-          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
           revenue: { $sum: '$totalAmount' }
         }
       },
@@ -155,7 +147,6 @@ router.get('/', verifyToken, theaterAdminOnly, async (req, res) => {
       revenueByDay,
       genreDistribution
     });
-
   } catch (error) {
     res.status(500).json({ message: 'Error fetching analytics', error: error.message });
   }

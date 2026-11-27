@@ -42,7 +42,7 @@ const verifyToken = async (req, res, next) => {
 
 // Admin Only Middleware
 const adminOnly = (req, res, next) => {
-  if (req.user && req.user.role === 'admin') {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'master_admin')) {
     next();
   } else {
     res.status(403).json({ message: 'Access denied: Admins only' });
@@ -51,7 +51,12 @@ const adminOnly = (req, res, next) => {
 
 // Theater Admin or Admin Middleware
 const theaterAdminOnly = (req, res, next) => {
-  if (req.user && (req.user.role === 'admin' || req.user.role === 'theater_admin')) {
+  if (
+    req.user &&
+    (req.user.role === 'admin' ||
+      req.user.role === 'master_admin' ||
+      req.user.role === 'theater_admin')
+  ) {
     next();
   } else {
     res.status(403).json({ message: 'Access denied: Higher privileges required' });

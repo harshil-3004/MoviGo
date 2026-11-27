@@ -1,43 +1,80 @@
 import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
-import { 
-  TrendingUp, Users, Film, Ticket, DollarSign, Calendar, Loader2, 
-  ArrowUpRight, ArrowDownRight, Activity, Plus, Settings, ShieldAlert 
+import {
+  TrendingUp,
+  Users,
+  Film,
+  Ticket,
+  IndianRupee,
+  Loader2,
+  Plus,
+  Building2,
+  Coins,
+  ArrowRight,
+  Activity,
 } from 'lucide-react';
-import { 
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  AreaChart, Area, PieChart, Pie, Cell 
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  PieChart,
+  Pie,
+  Cell,
 } from 'recharts';
 import { fetchApi } from '../../services/api';
+import Button from '../../components/common/Button';
 
-const COLORS = ['#F43F5E', '#8B5CF6', '#10B981', '#F59E0B', '#3B82F6'];
+const CHART_COLORS = ['#E11D48', '#D97706', '#10B981', '#3B82F6', '#6366F1'];
 
-const StatCard = ({ title, value, change, icon: Icon, color = "primary" }) => (
-  <div className="bg-surface/50 border border-white/10 p-6 rounded-[2rem] relative overflow-hidden group hover:border-white/20 transition-all">
-    <div className={`absolute top-0 right-0 w-32 h-32 bg-${color}/5 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-${color}/10 transition-colors`}></div>
-    <div className="flex items-center justify-between mb-4 relative z-10">
-      <div className={`p-3 bg-${color}/10 rounded-xl border border-${color}/20`}>
-        <Icon className={`w-6 h-6 text-${color}`} />
+const StatCard = ({ title, subtitle, value, icon, accent = 'accent' }) => {
+  const IconComp = icon;
+  const badgeColors = {
+    accent: { bg: 'var(--mg-accent-soft)', color: 'var(--mg-accent)' },
+    gold: { bg: 'var(--mg-gold-soft)', color: 'var(--mg-gold)' },
+    success: { bg: 'var(--mg-success-soft)', color: 'var(--mg-success)' },
+    neutral: { bg: 'var(--mg-surface-2)', color: 'var(--mg-ink)' },
+  }[accent] || { bg: 'var(--mg-accent-soft)', color: 'var(--mg-accent)' };
+
+  return (
+    <div
+      className="rounded-xl border p-5 flex items-start justify-between gap-4"
+      style={{
+        backgroundColor: 'var(--mg-surface)',
+        borderColor: 'var(--mg-border)',
+      }}
+    >
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--mg-ink-3)' }}>
+          {title}
+        </p>
+        <p className="text-2xl sm:text-3xl font-display font-bold mt-1.5" style={{ color: 'var(--mg-ink)' }}>
+          {value}
+        </p>
+        {subtitle && (
+          <p className="text-xs mt-1" style={{ color: 'var(--mg-ink-2)' }}>
+            {subtitle}
+          </p>
+        )}
       </div>
-      {change && (
-        <span className={`flex items-center text-xs font-bold ${change > 0 ? 'text-green-400' : 'text-rose-400'}`}>
-          {change > 0 ? <ArrowUpRight className="w-3 h-3 mr-1" /> : <ArrowDownRight className="w-3 h-3 mr-1" />}
-          {Math.abs(change)}%
-        </span>
-      )}
+      <div
+        className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+        style={{ backgroundColor: badgeColors.bg, color: badgeColors.color }}
+      >
+        <IconComp className="w-5 h-5" />
+      </div>
     </div>
-    <div className="relative z-10">
-      <h3 className="text-muted text-[10px] font-black uppercase tracking-widest mb-1">{title}</h3>
-      <p className="text-3xl font-black font-outfit text-white">{value}</p>
-    </div>
-  </div>
-);
+  );
+};
 
 const AdminDashboard = () => {
-  const { user } = useSelector(state => state.auth);
+  const { user } = useSelector((state) => state.auth);
   const navigate = useNavigate();
-  const isSuperAdmin = user?.role === 'admin';
+  const isSuperAdmin = user?.role === 'admin' || user?.role === 'master_admin';
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,7 +84,7 @@ const AdminDashboard = () => {
         const data = await fetchApi('/stats');
         setStats(data);
       } catch (err) {
-        console.error("Failed to load stats", err);
+        console.error('Failed to load stats', err);
       } finally {
         setLoading(false);
       }
@@ -57,227 +94,349 @@ const AdminDashboard = () => {
 
   if (loading) {
     return (
-      <div className="w-full h-screen flex flex-col items-center justify-center bg-base">
-        <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-        <p className="text-muted font-outfit uppercase tracking-widest text-xs font-black">Decrypting Intel...</p>
+      <div className="min-h-[70vh] flex flex-col items-center justify-center gap-3">
+        <Loader2 className="w-8 h-8 animate-spin" style={{ color: 'var(--mg-accent)' }} />
+        <p className="text-sm" style={{ color: 'var(--mg-ink-2)' }}>
+          Loading operations overview...
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-10 w-full animate-in fade-in duration-700 bg-base min-h-screen">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
+    <div className="p-6 lg:p-8 max-w-7xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-3 mb-3">
-             <span className="px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-[10px] font-black uppercase tracking-widest">
-               {isSuperAdmin ? 'Platform Authority' : 'Regional Oversight'}
-             </span>
-             <span className="text-muted text-[10px] font-bold uppercase tracking-widest">• Sector: {isSuperAdmin ? 'Global' : `${user?.theaterIds?.length || 0} Managed Nodes`}</span>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span
+              className="px-2.5 py-0.5 rounded-md text-[11px] font-semibold"
+              style={{ backgroundColor: 'var(--mg-accent-soft)', color: 'var(--mg-accent)' }}
+            >
+              {isSuperAdmin ? 'Platform Admin' : 'Venue Manager'}
+            </span>
+            <span className="text-xs" style={{ color: 'var(--mg-ink-3)' }}>
+              • {isSuperAdmin ? 'All Partner Cinemas' : `${user?.theaterIds?.length || 0} Assigned Cinemas`}
+            </span>
           </div>
-          <h1 className="text-4xl md:text-6xl font-black font-outfit text-white tracking-tighter">
-            {isSuperAdmin ? 'Global Nerve Center' : 'Theater Control Room'}
+          <h1 className="text-2xl sm:text-3xl font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+            {isSuperAdmin ? 'Operations Dashboard' : 'Cinema Overview'}
           </h1>
         </div>
-        <div className="flex gap-4">
-           <button onClick={() => navigate('/admin/movies')} className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-white text-xs font-bold uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
-              <Plus className="w-4 h-4" /> New Feature
-           </button>
-           <div className="w-12 h-12 rounded-xl bg-primary border border-primary/30 flex items-center justify-center text-white shadow-[0_0_20px_rgba(244,63,94,0.3)]">
-              <ShieldAlert className="w-6 h-6" />
-           </div>
-        </div>
+
+        {isSuperAdmin && (
+          <Button onClick={() => navigate('/admin/movies')}>
+            <Plus className="w-4 h-4" />
+            Manage Movies
+          </Button>
+        )}
       </div>
 
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
-        <StatCard 
-          title="Global Revenue" 
-          value={`₹${stats?.totalRevenue?.toLocaleString() || 0}`} 
-          icon={DollarSign} 
-          change={12.5}
+      {/* KPI Metrics */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="Ticket Revenue"
+          subtitle="Confirmed sales"
+          value={`₹${Number(stats?.totalRevenue || 0).toLocaleString('en-IN')}`}
+          icon={IndianRupee}
+          accent="accent"
         />
-        <StatCard 
-          title="Active Admissions" 
-          value={stats?.totalBookings || 0} 
-          icon={Ticket} 
-          change={8.2}
-          color="secondary"
+        <StatCard
+          title="Total Bookings"
+          subtitle="Completed orders"
+          value={stats?.totalBookings || 0}
+          icon={Ticket}
+          accent="success"
         />
-        <StatCard 
-          title="Citizen Registry" 
-          value={stats?.totalUsers || 0} 
-          icon={Users} 
-          change={5.1}
-          color="primary"
+        <StatCard
+          title="Registered Users"
+          subtitle="Customer accounts"
+          value={stats?.totalUsers || 0}
+          icon={Users}
+          accent="neutral"
         />
-        <StatCard 
-          title="Cinematic Assets" 
-          value={stats?.topMovies?.length || 0} 
-          icon={TrendingUp} 
-          color="secondary"
+        <StatCard
+          title="Top Charting Titles"
+          subtitle="Ranked by sales"
+          value={stats?.topMovies?.length || 0}
+          icon={TrendingUp}
+          accent="gold"
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 mb-12">
-        {/* Revenue Analysis Chart */}
-        <div className="lg:col-span-2 bg-surface/30 border border-white/5 rounded-[2.5rem] p-8 backdrop-blur-xl relative overflow-hidden group">
-          <div className="flex items-center justify-between mb-10">
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div
+          className="lg:col-span-8 rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--mg-surface)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-black font-outfit text-white tracking-tighter uppercase">Revenue Trajectory</h2>
-              <p className="text-xs text-muted uppercase tracking-widest font-bold mt-1">Financial Performance • Last 7 Cycles</p>
+              <h2 className="text-lg font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+                Revenue Trend
+              </h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--mg-ink-2)' }}>
+                Daily confirmed ticket revenue across recent cycles
+              </p>
             </div>
-            <div className="p-3 bg-white/5 rounded-2xl">
-              <Activity className="w-5 h-5 text-primary" />
-            </div>
+            <Activity className="w-5 h-5" style={{ color: 'var(--mg-accent)' }} />
           </div>
-          
-          <div className="h-[350px] w-full">
+
+          <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats?.revenueByDay || []}>
                 <defs>
-                  <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#F43F5E" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#F43F5E" stopOpacity={0}/>
+                  <linearGradient id="mgRevenueGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#E11D48" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="#E11D48" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff05" vertical={false} />
-                <XAxis 
-                  dataKey="_id" 
-                  stroke="#ffffff20" 
-                  fontSize={10} 
-                  tickLine={false} 
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--mg-border)" vertical={false} />
+                <XAxis
+                  dataKey="_id"
+                  stroke="var(--mg-ink-3)"
+                  fontSize={11}
+                  tickLine={false}
                   axisLine={false}
-                  tickFormatter={(val) => val.split('-').slice(1).join('/')}
+                  tickFormatter={(val) => String(val).split('-').slice(1).join('/')}
                 />
-                <YAxis stroke="#ffffff20" fontSize={10} tickLine={false} axisLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0B0C10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
-                  itemStyle={{ color: '#F43F5E', fontWeight: 'bold' }}
+                <YAxis stroke="var(--mg-ink-3)" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--mg-surface)',
+                    borderColor: 'var(--mg-border-strong)',
+                    borderRadius: '10px',
+                    color: 'var(--mg-ink)',
+                  }}
+                  itemStyle={{ color: '#E11D48', fontWeight: 600 }}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#F43F5E" strokeWidth={4} fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area
+                  type="monotone"
+                  dataKey="revenue"
+                  stroke="#E11D48"
+                  strokeWidth={2.5}
+                  fillOpacity={1}
+                  fill="url(#mgRevenueGrad)"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* Genre Distribution */}
-        <div className="bg-surface/30 border border-white/5 rounded-[2.5rem] p-8 backdrop-blur-xl flex flex-col">
-          <h2 className="text-2xl font-black font-outfit text-white tracking-tighter uppercase mb-2">Sector Demand</h2>
-          <p className="text-[10px] text-muted uppercase tracking-widest font-black mb-10">Genre Distribution Analysis</p>
-          
-          <div className="flex-1 min-h-[300px]">
+        <div
+          className="lg:col-span-4 rounded-xl border p-6 flex flex-col"
+          style={{
+            backgroundColor: 'var(--mg-surface)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <div>
+            <h2 className="text-lg font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+              Audience Preferences
+            </h2>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--mg-ink-2)' }}>
+              Booking volume by genre
+            </p>
+          </div>
+
+          <div className="flex-1 min-h-[240px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={stats?.genreDistribution || []}
                   cx="50%"
                   cy="50%"
-                  innerRadius={80}
-                  outerRadius={100}
-                  paddingAngle={8}
+                  innerRadius={62}
+                  outerRadius={86}
+                  paddingAngle={4}
                   dataKey="value"
                 >
                   {stats?.genreDistribution?.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    <Cell
+                      key={`genre-${entry.name || index}`}
+                      fill={CHART_COLORS[index % CHART_COLORS.length]}
+                    />
                   ))}
                 </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0B0C10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: 'var(--mg-surface)',
+                    borderColor: 'var(--mg-border-strong)',
+                    borderRadius: '10px',
+                    color: 'var(--mg-ink)',
+                  }}
                 />
               </PieChart>
             </ResponsiveContainer>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 mt-4">
-             {stats?.genreDistribution?.map((item, i) => (
-               <div key={item.name} className="flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
-                 <span className="text-[10px] text-white/70 font-bold uppercase tracking-tighter">{item.name}</span>
-               </div>
-             ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        {/* Top Performers */}
-        <div className="lg:col-span-2 bg-surface/30 border border-white/5 rounded-[2.5rem] p-8">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-2xl font-black font-outfit text-white tracking-tighter uppercase">High Command Assets</h2>
-            <Film className="w-5 h-5 text-secondary" />
-          </div>
-          <div className="space-y-4">
-            {stats?.topMovies?.map((movie, i) => (
-              <div key={movie.title} className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 transition-all group">
-                <div className="flex items-center gap-5">
-                  <span className="text-2xl font-black text-white/20 group-hover:text-primary/40 transition-colors">0{i+1}</span>
-                  <img src={movie.poster} alt="" className="w-12 h-16 object-cover rounded-xl shadow-2xl border border-white/10" />
-                  <div>
-                    <h4 className="font-black text-white uppercase tracking-tighter text-lg">{movie.title}</h4>
-                    <p className="text-[10px] text-muted font-black uppercase tracking-widest">Incursion Velocity: {movie.bookingCount} Units</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white/30 group-hover:bg-primary group-hover:text-white transition-all cursor-pointer">
-                    <Plus className="w-5 h-5" />
-                  </div>
-                </div>
+          <div className="grid grid-cols-2 gap-2 pt-3 border-t" style={{ borderColor: 'var(--mg-border)' }}>
+            {stats?.genreDistribution?.map((item, i) => (
+              <div key={item.name} className="flex items-center gap-2 text-xs">
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}
+                />
+                <span className="truncate" style={{ color: 'var(--mg-ink-2)' }}>
+                  {item.name}
+                </span>
               </div>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Quick Management */}
-        <div className="bg-surface/30 border border-white/5 rounded-[2.5rem] p-8">
-          <h2 className="text-2xl font-black font-outfit text-white tracking-tighter uppercase mb-10">Neural Links</h2>
-          <div className="space-y-4">
-            <button 
+      {/* Bottom Row: Top Movies & Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div
+          className="lg:col-span-8 rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--mg-surface)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-lg font-display font-bold" style={{ color: 'var(--mg-ink)' }}>
+              Top Performing Titles
+            </h2>
+            <Film className="w-4 h-4" style={{ color: 'var(--mg-ink-3)' }} />
+          </div>
+
+          <div className="space-y-3">
+            {stats?.topMovies?.length ? (
+              stats.topMovies.map((movie, i) => (
+                <div
+                  key={movie.title}
+                  onClick={() => navigate('/admin/movies')}
+                  className="flex items-center justify-between gap-4 p-3 rounded-lg border cursor-pointer transition-colors"
+                  style={{
+                    backgroundColor: 'var(--mg-surface-2)',
+                    borderColor: 'var(--mg-border)',
+                  }}
+                >
+                  <div className="flex items-center gap-4 min-w-0">
+                    <span className="text-sm font-mono font-bold w-6 text-center shrink-0" style={{ color: 'var(--mg-ink-3)' }}>
+                      0{i + 1}
+                    </span>
+                    <img
+                      src={movie.poster}
+                      alt={movie.title}
+                      className="w-10 h-14 object-cover rounded border shrink-0"
+                      style={{ borderColor: 'var(--mg-border)' }}
+                    />
+                    <div className="min-w-0">
+                      <p className="font-display font-bold text-sm truncate" style={{ color: 'var(--mg-ink)' }}>
+                        {movie.title}
+                      </p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--mg-ink-2)' }}>
+                        {movie.bookingCount} bookings
+                      </p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 shrink-0" style={{ color: 'var(--mg-ink-3)' }} />
+                </div>
+              ))
+            ) : (
+              <p className="text-sm py-6 text-center" style={{ color: 'var(--mg-ink-3)' }}>
+                No booking analytics available yet.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="lg:col-span-4 rounded-xl border p-6"
+          style={{
+            backgroundColor: 'var(--mg-surface)',
+            borderColor: 'var(--mg-border)',
+          }}
+        >
+          <h2 className="text-lg font-display font-bold mb-4" style={{ color: 'var(--mg-ink)' }}>
+            Quick Shortcuts
+          </h2>
+          <div className="space-y-2.5">
+            <button
+              type="button"
               onClick={() => navigate('/admin/movies')}
-              className="w-full group p-6 bg-primary/5 border border-primary/20 rounded-2xl text-left hover:bg-primary/10 transition-all relative overflow-hidden"
+              className="w-full p-3.5 rounded-lg border flex items-center justify-between text-left transition-colors cursor-pointer"
+              style={{
+                backgroundColor: 'var(--mg-surface-2)',
+                borderColor: 'var(--mg-border)',
+              }}
             >
-              <div className="relative z-10">
-                <h4 className="text-primary font-black uppercase tracking-widest text-xs mb-1">Catalog Interface</h4>
-                <p className="text-white text-lg font-black tracking-tighter">Manage Media Assets</p>
+              <div className="flex items-center gap-3">
+                <Film className="w-4 h-4" style={{ color: 'var(--mg-accent)' }} />
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--mg-ink)' }}>Movies Catalog</p>
+                  <p className="text-xs" style={{ color: 'var(--mg-ink-3)' }}>Add listings &amp; spotlight hero</p>
+                </div>
               </div>
-              <Plus className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 text-primary/20 group-hover:text-primary transition-colors" />
+              <ArrowRight className="w-4 h-4" style={{ color: 'var(--mg-ink-3)' }} />
             </button>
 
-            <button 
+            <button
+              type="button"
               onClick={() => navigate('/admin/theaters')}
-              className="w-full group p-6 bg-secondary/5 border border-secondary/20 rounded-2xl text-left hover:bg-secondary/10 transition-all relative overflow-hidden"
+              className="w-full p-3.5 rounded-lg border flex items-center justify-between text-left transition-colors cursor-pointer"
+              style={{
+                backgroundColor: 'var(--mg-surface-2)',
+                borderColor: 'var(--mg-border)',
+              }}
             >
-              <div className="relative z-10">
-                <h4 className="text-secondary font-black uppercase tracking-widest text-xs mb-1">Sector Protocols</h4>
-                <p className="text-white text-lg font-black tracking-tighter">Theater Command</p>
+              <div className="flex items-center gap-3">
+                <Building2 className="w-4 h-4" style={{ color: 'var(--mg-accent)' }} />
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--mg-ink)' }}>Cinemas &amp; Screens</p>
+                  <p className="text-xs" style={{ color: 'var(--mg-ink-3)' }}>Configure layouts &amp; showtimes</p>
+                </div>
               </div>
-              <Settings className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 text-secondary/20 group-hover:text-secondary transition-colors" />
+              <ArrowRight className="w-4 h-4" style={{ color: 'var(--mg-ink-3)' }} />
             </button>
 
-           {isSuperAdmin && (
-             <>
-              <button 
-                onClick={() => navigate('/admin/users')}
-                className="w-full group p-6 bg-white/5 border border-white/10 rounded-2xl text-left hover:bg-white/10 transition-all relative overflow-hidden"
-              >
-                <div className="relative z-10">
-                  <h4 className="text-white/40 font-black uppercase tracking-widest text-xs mb-1">Citizen Database</h4>
-                  <p className="text-white text-lg font-black tracking-tighter">Registry Control</p>
-                </div>
-                <Users className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 text-white/10 group-hover:text-white transition-colors" />
-              </button>
+            {isSuperAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin/users')}
+                  className="w-full p-3.5 rounded-lg border flex items-center justify-between text-left transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--mg-surface-2)',
+                    borderColor: 'var(--mg-border)',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Users className="w-4 h-4" style={{ color: 'var(--mg-ink)' }} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--mg-ink)' }}>Customer Directory</p>
+                      <p className="text-xs" style={{ color: 'var(--mg-ink-3)' }}>Manage registered accounts</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4" style={{ color: 'var(--mg-ink-3)' }} />
+                </button>
 
-              <button 
-                onClick={() => navigate('/admin/loyalty')}
-                className="w-full group p-6 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl text-left hover:bg-yellow-500/10 transition-all relative overflow-hidden"
-              >
-                <div className="relative z-10">
-                  <h4 className="text-yellow-500 font-black uppercase tracking-widest text-xs mb-1">Artifact Vault</h4>
-                  <p className="text-white text-lg font-black tracking-tighter">Loyalty Management</p>
-                </div>
-                <TrendingUp className="absolute right-6 top-1/2 -translate-y-1/2 w-6 h-6 text-yellow-500/20 group-hover:text-yellow-500 transition-colors" />
-              </button>
-             </>
-           )}
+                <button
+                  type="button"
+                  onClick={() => navigate('/admin/loyalty')}
+                  className="w-full p-3.5 rounded-lg border flex items-center justify-between text-left transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: 'var(--mg-surface-2)',
+                    borderColor: 'var(--mg-border)',
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <Coins className="w-4 h-4" style={{ color: 'var(--mg-gold)' }} />
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: 'var(--mg-ink)' }}>Loyalty Rewards Store</p>
+                      <p className="text-xs" style={{ color: 'var(--mg-ink-3)' }}>Manage redeemable perks</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4" style={{ color: 'var(--mg-ink-3)' }} />
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
